@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
         desktopVisible = visible
         pipEnabled = allowPip
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val builder = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
+            val builder = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 10))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 builder
                     .setAutoEnterEnabled(visible && allowPip)
@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (desktopVisible && pipEnabled && Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S) {
-            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 10)).build())
         }
     }
 
@@ -286,31 +286,31 @@ private fun SetupApp(
                     username = user
                     password = pass
                     error = null
-                progress = 5
-                progressMessage = "正在准备 Ubuntu 24.04"
-                page = SetupPage.INSTALLING
-                initialize(
-                    username,
-                    password,
-                    SetupCatalog.resolveSelection(emptySet()),
-                    { state ->
-                        progress = state.percent
-                        progressMessage = state.message
-                    },
-                    {
-                        password = ""
-                        progress = 100
-                        page = SetupPage.COMPLETE
-                    },
-                    { message ->
-                        password = ""
-                        error = message
-                        page = SetupPage.ACCOUNT
-                    }
-                )
+                    progress = 5
+                    progressMessage = "正在准备 Ubuntu 24.04"
+                    page = SetupPage.INSTALLING
+                    initialize(
+                        user,
+                        pass,
+                        SetupCatalog.resolveSelection(emptySet()),
+                        { state ->
+                            progress = state.percent
+                            progressMessage = state.message
+                        },
+                        {
+                            password = ""
+                            progress = 100
+                            page = SetupPage.COMPLETE
+                        },
+                        { message ->
+                            password = ""
+                            error = message
+                            page = SetupPage.ACCOUNT
+                        }
+                    )
                 }
             )
-SetupPage.INSTALLING -> InstallingPage(progress, progressMessage)
+            SetupPage.INSTALLING -> InstallingPage(progress, progressMessage)
             SetupPage.COMPLETE -> CompletePage { page = SetupPage.TERMINAL }
             SetupPage.TERMINAL -> TerminalPage(
                 username = username.ifBlank { "ubuntu" },
@@ -424,7 +424,7 @@ private fun PermissionPage(onRequest: () -> Unit, onCheck: () -> Unit) {
 private fun WelcomePage(onContinue: () -> Unit) {
     PageFrame(currentStep = 0, compact = true) {
         Text(
-            "doroUbuntu",
+            "LinuxHub",
             modifier = Modifier.fillMaxWidth(),
             fontSize = 32.sp,
             color = MainText,
@@ -442,7 +442,7 @@ private fun WelcomePage(onContinue: () -> Unit) {
         )
         Spacer(Modifier.height(30.dp))
         Text(
-            "XFCE 桌面  ·  Turnip + Zink  ·  开发环境",
+            "XFCE 桌面  ·  Turnip + Zink  ·  轻量基础系统",
             modifier = Modifier.fillMaxWidth(),
             color = Accent,
             fontSize = 16.sp,
@@ -452,7 +452,7 @@ private fun WelcomePage(onContinue: () -> Unit) {
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            "离线一键部署，首次安装约需 30 分钟。\n请预留至少 10 GB 可用空间。",
+            "轻量系统一键部署，首次安装约需 5–6 分钟。\n请预留至少 5 GB 可用空间。",
             modifier = Modifier.fillMaxWidth(),
             color = MainText,
             fontSize = 16.sp,
@@ -536,7 +536,7 @@ private fun InstallingPage(progress: Int, message: String) {
         Text("正在部署系统", fontSize = 30.sp, color = MainText, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(26.dp))
         Text(
-            "完整部署通常需要约 30 分钟，具体时间取决于设备性能。",
+            "轻量系统部署通常需要约 5–6 分钟，具体时间取决于设备性能。",
             color = MainText,
             fontSize = 19.sp,
             lineHeight = 29.sp
@@ -562,7 +562,7 @@ private fun CompletePage(onEnter: () -> Unit) {
     PageFrame(currentStep = 4) {
         Text("完成", fontSize = 30.sp, color = MainText, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(26.dp))
-        Text("Ubuntu 已部署完成。", color = MainText, fontSize = 19.sp)
+        Text("Ubuntu 24.04 已部署完成。", color = MainText, fontSize = 19.sp)
         Spacer(Modifier.height(18.dp))
         Text("XFCE 与已选组件已配置。", color = MainText, fontSize = 17.sp)
         Spacer(Modifier.weight(1f))

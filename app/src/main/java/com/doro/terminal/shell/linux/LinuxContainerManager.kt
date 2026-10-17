@@ -70,14 +70,13 @@ class LinuxContainerManager(private val context: Context) {
                     paths.rootfsReadyMarker.writeText("ubuntu-24.04\n")
                 }
             }
-            execute(InitializationStep.CREATE_CONTAINER, "正在安装离线开发核心") {
+            execute(InitializationStep.CREATE_CONTAINER, "正在安装基础系统") {
                 writeContainerFiles()
-                installOfflineCore(onProgress)
-                installCliExtras(onProgress)
+                installBootstrapPackages(onProgress)
+                installDesktopThemes()
                 installFastfetch(onProgress)
-                installFactoryApps(onProgress)
                 installMesaGpuRuntime()
-                installGpuTools(onProgress)
+                verifyGpuRuntime()
                 installSparkStore(onProgress)
                 installVendorApps(onProgress)
             }
@@ -271,11 +270,15 @@ class LinuxContainerManager(private val context: Context) {
         val home = File(paths.rootfsDir, "home/$username")
         if (!home.isDirectory) return
         installDesktopCompatibility()
-        installWhiteSurDesktopTheme()
-        removeConflictingNotificationArea(username)
-        configureStablePanel(username)
-        configureMacAppearance(username)
-        configurePlank(username)
+        val defaultsMarker = File(home, ".config/xfce4/.doro-desktop-defaults-v1")
+        if (!defaultsMarker.exists()) {
+            removeConflictingNotificationArea(username)
+            configureStablePanel(username)
+            configureMacAppearance(username)
+            configurePlank(username)
+            defaultsMarker.parentFile?.mkdirs()
+            defaultsMarker.writeText("desktop-defaults-v1\n")
+        }
         val desktop = File(home, "Desktop").apply { mkdirs() }
         val applications = File(paths.rootfsDir, "usr/share/applications")
         val firefoxDesktop = File(applications, "firefox.desktop")
@@ -353,15 +356,39 @@ class LinuxContainerManager(private val context: Context) {
         )
     }
 
-    private fun installWhiteSurDesktopTheme() {
-        val marker = File(paths.rootfsDir, "usr/share/themes/.doro-whitesur-v2-icons")
+    private fun installDesktopThemes() {
+        installThemeAsset(
+            asset = WHITESUR_GTK_ASSET,
+            sha256 = WHITESUR_GTK_SHA256,
+            totalBytes = WHITESUR_GTK_ASSET_SIZE,
+            marker = File(paths.rootfsDir, "usr/share/themes/.doro-whitesur-gtk-v1"),
+            label = "WhiteSur-Dark GTK theme"
+        )
+        installThemeAsset(
+            asset = TELA_CIRCLE_ASSET,
+            sha256 = TELA_CIRCLE_SHA256,
+            totalBytes = TELA_CIRCLE_ASSET_SIZE,
+            marker = File(paths.rootfsDir, "usr/share/icons/.doro-tela-circle-v1"),
+            label = "Tela-circle icon theme"
+        )
+        // Tela-circle replaces the old 61 MB WhiteSur icon set.
+        File(paths.rootfsDir, "usr/share/icons/WhiteSur").deleteRecursively()
+    }
+
+    private fun installThemeAsset(
+        asset: String,
+        sha256: String,
+        totalBytes: Long,
+        marker: File,
+        label: String
+    ) {
         if (marker.isFile) return
-        verifyAsset(WHITESUR_THEME_ASSET, WHITESUR_THEME_SHA256)
-        context.assets.open(WHITESUR_THEME_ASSET).use { input ->
-            TarGzExtractor.extract(input, File(paths.rootfsDir, "usr/share"), WHITESUR_THEME_ASSET_SIZE)
+        verifyAsset(asset, sha256)
+        context.assets.open(asset).use { input ->
+            TarGzExtractor.extract(input, File(paths.rootfsDir, "usr/share"), totalBytes)
         }
         marker.parentFile?.mkdirs()
-        marker.writeText("WhiteSur-Dark + WhiteSur icons\n")
+        marker.writeText("$label\n")
     }
 
     private fun configureMacAppearance(username: String) {
@@ -385,7 +412,7 @@ class LinuxContainerManager(private val context: Context) {
 <channel name="xsettings" version="1.0">
   <property name="Net" type="empty">
     <property name="ThemeName" type="string" value="WhiteSur-Dark"/>
-    <property name="IconThemeName" type="string" value="WhiteSur"/>
+    <property name="IconThemeName" type="string" value="Tela-circle"/>
   </property>
   <property name="Gtk" type="empty">
     <property name="FontName" type="string" value="Noto Sans 10"/>
@@ -394,6 +421,24 @@ class LinuxContainerManager(private val context: Context) {
 """
             )
         }
+        val xsettingsContent = xsettings.readText()
+        val iconThemeProperty = Regex(
+            """(<property\s+name="IconThemeName"[^>]*\bvalue=")[^"]*(")"""
+        )
+        val migratedXsettings = when {
+            iconThemeProperty.containsMatchIn(xsettingsContent) ->
+                iconThemeProperty.replace(xsettingsContent) { match ->
+                    "${match.groupValues[1]}Tela-circle${match.groupValues[2]}"
+                }
+            xsettingsContent.contains("<property name=\"Net\" type=\"empty\">") ->
+                xsettingsContent.replace(
+                    "<property name=\"Net\" type=\"empty\">",
+                    "<property name=\"Net\" type=\"empty\">\n    " +
+                        "<property name=\"IconThemeName\" type=\"string\" value=\"Tela-circle\"/>"
+                )
+            else -> xsettingsContent
+        }
+        if (migratedXsettings != xsettingsContent) xsettings.writeText(migratedXsettings)
         val xfwm = File(configDir, "xfwm4.xml")
         if (!xfwm.exists()) {
             xfwm.writeText(
@@ -717,7 +762,11 @@ val reader = Thread {
                 process.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
                         watchdog.recordActivity()
-                        synchronized(output) { output.appendLine(line) }
+                        synchronized(output) {
+                            output.appendLine(line)
+                            val overflow = output.length - MAX_CAPTURED_OUTPUT_CHARS
+                            if (overflow > 0) output.delete(0, overflow)
+                        }
                         appendLog("[$operation] $line")
                         onActivity(line)
                     }
@@ -833,7 +882,7 @@ private fun prepareContainerMounts() {
     private fun verifyAsset(asset: String, expectedSha256: String) {
         val digest = MessageDigest.getInstance("SHA-256")
         context.assets.open(asset).use { input ->
-            val buffer = ByteArray(1024 * 1024)
+            val buffer = ByteArray(64 * 1024)
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
@@ -889,65 +938,68 @@ private fun prepareContainerMounts() {
         }
     }
 
-    private fun installGpuTools(onProgress: (InitializationProgress) -> Unit) {
-        if (paths.gpuToolsReadyMarker.isFile) return
+    private fun installBootstrapPackages(onProgress: (InitializationProgress) -> Unit) {
+        val installedVersion = runCatching {
+            paths.bootstrapReadyMarker.readText().trim()
+        }.getOrNull()
+        if (installedVersion == BOOTSTRAP_MARKER_VERSION) return
+
         paths.offlinePackagesDir.deleteRecursively()
         paths.offlinePackagesDir.mkdirs()
-        verifyAsset(GPU_TOOLS_ASSET, GPU_TOOLS_SHA256)
-        extractAsset(GPU_TOOLS_ASSET, paths.offlinePackagesDir, 46, 46, "正在解压GPU工具", onProgress)
-        runAsRoot(OfflineInstallScript.build(), "gpu-tools", timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS)
+        verifyAsset(BOOTSTRAP_ASSET, BOOTSTRAP_SHA256)
+        extractAsset(
+            BOOTSTRAP_ASSET,
+            paths.offlinePackagesDir,
+            35,
+            44,
+            "正在解压离线软件包",
+            onProgress
+        )
+        copyAsset(
+            BOOTSTRAP_PACKAGE_LIST_ASSET,
+            File(paths.offlinePackagesDir, BOOTSTRAP_PACKAGE_LIST)
+        )
+        onProgress(createContainerProgress("正在安装基础系统与桌面组件", 44))
+        runAsRoot(
+            OfflineInstallScript.build(BOOTSTRAP_PACKAGE_LIST),
+            "bootstrap-packages",
+            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
+            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
+            onActivity = { line ->
+                onProgress(createContainerProgress("正在安装离线软件包：${line.take(36)}", 44))
+            }
+        )
+
+        ensureTunaAptMirror()
+        ensureHostnameResolution()
+        runAsRoot(
+            "sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen; " +
+                "locale-gen zh_CN.UTF-8; " +
+                "update-locale LANG=zh_CN.UTF-8 LANGUAGE=zh_CN:zh LC_ALL=zh_CN.UTF-8; " +
+                "locale -a | grep -qi '^zh_CN\\.utf8$'",
+            "chinese-locale"
+        )
+        runAsRoot(
+            "command -v sudo curl file less zip unzip bzip2 perl vim top killall ifconfig " +
+                "aria2c strace sl dig ping traceroute whois socat nc glxinfo vulkaninfo " +
+                "startxfce4 fcitx5 thunar mousepad xfce4-terminal plank bluetoothctl nmcli >/dev/null; " +
+                "test -f /usr/share/applications/thunar.desktop; " +
+                "test -f /usr/share/applications/xfce4-terminal.desktop; " +
+                "test -z \"\$(dpkg -C 2>&1)\"",
+            "bootstrap-packages-check"
+        )
+        paths.offlinePackagesDir.deleteRecursively()
+        paths.bootstrapReadyMarker.writeText("$BOOTSTRAP_MARKER_VERSION\n")
+    }
+
+    private fun verifyGpuRuntime() {
         runAsRoot(
             "command -v glxinfo vulkaninfo >/dev/null && " +
                 "test -f /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so && " +
                 "test -f /usr/lib/aarch64-linux-gnu/dri/zink_dri.so && " +
                 "test -f /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json",
-            "gpu-tools-check"
+            "gpu-runtime-check"
         )
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.gpuToolsReadyMarker.writeText("gpu-tools-v1\n")
-    }
-
-    private fun installOfflineCore(onProgress: (InitializationProgress) -> Unit) {
-        if (paths.offlineCoreReadyMarker.isFile) return
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.offlinePackagesDir.mkdirs()
-        verifyAsset(OFFLINE_CORE_ASSET, OFFLINE_CORE_SHA256)
-        extractAsset(OFFLINE_CORE_ASSET, paths.offlinePackagesDir, 35, 38, "正在解压开发核心", onProgress)
-        onProgress(createContainerProgress("正在配置开发核心", 39))
-        runAsRoot(
-            OfflineInstallScript.build(),
-            "offline-core",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
-            onActivity = { line -> onProgress(createContainerProgress("正在安装开发核心：${line.take(36)}", 39)) }
-        )
-        runAsRoot(
-            "command -v sudo git python3 pip3 gcc g++ make cmake gdb ssh curl wget nano >/dev/null",
-            "offline-core-check"
-        )
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.offlineCoreReadyMarker.writeText("core-dev-v1\n")
-    }
-
-    private fun installCliExtras(onProgress: (InitializationProgress) -> Unit) {
-        if (paths.cliExtraReadyMarker.isFile) return
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.offlinePackagesDir.mkdirs()
-        verifyAsset(CLI_EXTRA_ASSET, CLI_EXTRA_SHA256)
-        extractAsset(CLI_EXTRA_ASSET, paths.offlinePackagesDir, 39, 40, "正在解压常用命令", onProgress)
-        runAsRoot(
-            OfflineInstallScript.build(),
-            "cli-extra",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
-            onActivity = { line -> onProgress(createContainerProgress("正在安装常用命令：${line.take(36)}", 40)) }
-        )
-        runAsRoot(
-            "command -v top killall ifconfig aria2c strace sl dig ping traceroute whois socat nc >/dev/null",
-            "cli-extra-check"
-        )
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.cliExtraReadyMarker.writeText("cli-extra-v1\n")
     }
 
     private fun installFastfetch(onProgress: (InitializationProgress) -> Unit) {
@@ -968,65 +1020,13 @@ private fun prepareContainerMounts() {
         paths.fastfetchReadyMarker.writeText("fastfetch-2.66.0\n")
     }
 
-    private fun installFactoryApps(onProgress: (InitializationProgress) -> Unit) {
-        val installedVersion = runCatching { paths.factoryAppsReadyMarker.readText().trim() }.getOrNull()
-        if (installedVersion == FACTORY_APPS_MARKER_VERSION) return
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.offlinePackagesDir.mkdirs()
-        verifyAsset(FACTORY_APPS_ASSET, FACTORY_APPS_SHA256)
-        extractAsset(FACTORY_APPS_ASSET, paths.offlinePackagesDir, 40, 44, "正在解压预装软件", onProgress)
-        onProgress(createContainerProgress("正在配置预装软件", 45))
-        installFactoryDependencyFix()
-        runAsRoot(
-            OfflineInstallScript.build(),
-            "factory-apps",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
-            onActivity = { line -> onProgress(createContainerProgress("正在安装预装软件：${line.take(36)}", 45)) }
-        )
-        ensureTunaAptMirror()
-        ensureHostnameResolution()
-        onProgress(createContainerProgress("正在补全预装软件依赖", 45))
-        runAsRoot(
-            FactoryPackageRepairScript.build(),
-            "factory-apps-repair",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
-            onActivity = { line -> onProgress(createContainerProgress("正在修复软件依赖：${line.take(36)}", 45)) }
-        )
-        runAsRoot(
-            "sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen; " +
-                "locale-gen zh_CN.UTF-8; update-locale LANG=zh_CN.UTF-8 LANGUAGE=zh_CN:zh LC_ALL=zh_CN.UTF-8; " +
-                "locale -a | grep -qi '^zh_CN\\.utf8$'",
-            "chinese-locale"
-        )
-        runAsRoot(
-            "doro_dpkg_audit=\$(dpkg -C 2>&1); " +
-                "if [ -n \"\$doro_dpkg_audit\" ]; then printf '%s\\n' \"\$doro_dpkg_audit\"; exit 1; fi; " +
-                "command -v startxfce4 fcitx5 thunar libreoffice vlc gimp plank java cargo go jupyter-notebook >/dev/null; " +
-                "test -f /usr/share/applications/thunar.desktop; " +
-                "test -f /usr/share/applications/libreoffice-startcenter.desktop; " +
-                "test -f /usr/share/applications/vlc.desktop; " +
-                "test -f /usr/share/applications/gimp.desktop",
-            "factory-apps-check"
-        )
-        paths.offlinePackagesDir.deleteRecursively()
-        paths.factoryAppsReadyMarker.writeText("$FACTORY_APPS_MARKER_VERSION\n")
-    }
-
-    private fun installFactoryDependencyFix() {
-        val packageDir = File(paths.offlinePackagesDir, "packages").also { it.mkdirs() }
-        FACTORY_FIX_ASSETS.forEach { fileName ->
-            copyAsset("offline/factory-fix/$fileName", File(packageDir, fileName))
-        }
-    }
-
     private fun installVendorApps(onProgress: (InitializationProgress) -> Unit) {
-        if (paths.vendorAppsReadyMarker.isFile) return
+        val installedVersion = runCatching { paths.vendorAppsReadyMarker.readText().trim() }.getOrNull()
+        if (installedVersion == VENDOR_APPS_MARKER_VERSION) return
         paths.offlinePackagesDir.deleteRecursively()
         paths.offlinePackagesDir.mkdirs()
         verifyAsset(VENDOR_APPS_ASSET, VENDOR_APPS_SHA256)
-        extractAsset(VENDOR_APPS_ASSET, paths.offlinePackagesDir, 46, 48, "正在解压Firefox浏览器", onProgress)
+        extractAsset(VENDOR_APPS_ASSET, paths.offlinePackagesDir, 48, 49, "正在解压Firefox浏览器", onProgress)
         onProgress(createContainerProgress("正在配置Firefox浏览器", 49))
         runAsRoot(
             "chmod 755 /var/cache/doro-offline/install-vendor.sh && /var/cache/doro-offline/install-vendor.sh",
@@ -1035,67 +1035,16 @@ private fun prepareContainerMounts() {
             idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
             onActivity = { line -> onProgress(createContainerProgress("正在安装Firefox浏览器：${line.take(30)}", 49)) }
         )
-        ensureTunaAptMirror()
-        ensureHostnameResolution()
-        onProgress(createContainerProgress("正在补全厂商应用依赖", 49))
-        runAsRoot(
-            VendorAppsRepairScript.build(),
-            "vendor-apps-repair",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS,
-            onActivity = { line -> onProgress(createContainerProgress("正在修复厂商应用：${line.take(32)}", 49)) }
-        )
-        runAsRoot(VendorAppsRepairScript.check(), "vendor-apps-check")
+        runAsRoot(VendorAppsCheckScript.check(), "vendor-apps-check")
         paths.offlinePackagesDir.deleteRecursively()
-        paths.vendorAppsReadyMarker.writeText("vendor-apps-v1\n")
-    }
-
-    private fun stageFastfetchMigration(): String {
-        if (paths.fastfetchReadyMarker.isFile) return ""
-        val packageFile = File(paths.rootfsDir, "tmp/$FASTFETCH_FILE")
-        if (!packageFile.isFile) {
-            packageFile.parentFile?.mkdirs()
-            verifyAsset(FASTFETCH_ASSET, FASTFETCH_SHA256)
-            copyAsset(FASTFETCH_ASSET, packageFile)
-        }
-        return "if ! command -v fastfetch >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive UCF_FORCE_CONFFOLD=1 dpkg --force-confdef --force-confold -i /tmp/$FASTFETCH_FILE >/tmp/doro-fastfetch.log 2>&1 || true; fi; " +
-            "if command -v fastfetch >/dev/null 2>&1; then printf 'fastfetch-2.66.0\\n' > /.doro-fastfetch-ready; rm -f /tmp/$FASTFETCH_FILE; fi; "
-    }
-
-    private fun stageSparkStoreMigration(): String {
-        if (paths.sparkStoreReadyMarker.isFile) return ""
-        val packageFile = File(paths.rootfsDir, "tmp/$SPARK_STORE_FILE")
-        if (!packageFile.isFile) {
-            packageFile.parentFile?.mkdirs()
-            verifyAsset(SPARK_STORE_ASSET, SPARK_STORE_SHA256)
-            copyAsset(SPARK_STORE_ASSET, packageFile)
-        }
-        return "if ! dpkg-query -W -f='\${Status}' spark-store 2>/dev/null | grep -q 'install ok installed'; then " +
-            "export DEBIAN_FRONTEND=noninteractive UCF_FORCE_CONFFOLD=1 NEEDRESTART_MODE=a; " +
-            "dpkg --force-confdef --force-confold -i /tmp/$SPARK_STORE_FILE >/tmp/doro-spark-store.log 2>&1 || true; " +
-            "dpkg --force-confdef --force-confold --configure -a >>/tmp/doro-spark-store.log 2>&1 || true; fi; " +
-            "if dpkg-query -W -f='\${Status}' spark-store 2>/dev/null | grep -q 'install ok installed' && " +
-            "command -v spark-store >/dev/null 2>&1 && test -x /opt/spark-store/bin/spark-store && " +
-            "test -f /usr/share/applications/spark-store.desktop; then " +
-            "printf 'spark-store-5.2.1.0\\n' > /.doro-spark-store-ready; rm -f /tmp/$SPARK_STORE_FILE; " +
-            "else cat /tmp/doro-spark-store.log 2>/dev/null; exit 1; fi; "
+        paths.vendorAppsReadyMarker.writeText("$VENDOR_APPS_MARKER_VERSION\n")
     }
 
     private fun installSparkStore(onProgress: (InitializationProgress) -> Unit) {
         if (paths.sparkStoreReadyMarker.isFile) return
-        onProgress(createContainerProgress("正在安装星火商店依赖", 49))
+        onProgress(createContainerProgress("正在安装星火商店", 49))
         paths.offlinePackagesDir.deleteRecursively()
         paths.offlinePackagesDir.mkdirs()
-        verifyAsset(SPARK_STORE_DEPS_ASSET, SPARK_STORE_DEPS_SHA256)
-        extractAsset(SPARK_STORE_DEPS_ASSET, paths.offlinePackagesDir, 49, 49, "正在解压星火依赖", onProgress)
-        runAsRoot(
-            OfflineInstallScript.build(),
-            "spark-store-deps",
-            timeoutMs = OFFLINE_INSTALL_TIMEOUT_MS,
-            idleTimeoutMs = OFFLINE_INSTALL_IDLE_TIMEOUT_MS
-        )
-        paths.offlinePackagesDir.deleteRecursively()
-        onProgress(createContainerProgress("正在安装星火商店", 49))
         val packageFile = File(paths.rootfsDir, "tmp/$SPARK_STORE_FILE")
         packageFile.parentFile?.mkdirs()
         verifyAsset(SPARK_STORE_ASSET, SPARK_STORE_SHA256)
@@ -1126,9 +1075,8 @@ private fun prepareContainerMounts() {
         onProgress: (InitializationProgress) -> Unit
     ) {
         val assetSize = when (asset) {
-            OFFLINE_CORE_ASSET -> 143107937L
-            FACTORY_APPS_ASSET -> 1124894720L
-            VENDOR_APPS_ASSET -> 291635200L
+            BOOTSTRAP_ASSET -> BOOTSTRAP_ASSET_SIZE
+            VENDOR_APPS_ASSET -> VENDOR_APPS_ASSET_SIZE
             else -> 0L
         }
         context.assets.open(asset).use { input ->
@@ -1231,26 +1179,28 @@ private fun prepareContainerMounts() {
         @Volatile private var bridgeProcess: Process? = null
         private const val ROOTFS_ASSET = "rootfs/ubuntu-base-24.04.4-base-arm64.tar"
         private const val XKB_ASSET = "x11/xkb-data.tar"
-        private const val ROOTFS_SHA256 = "0ce61ffe898bab0d0b35231c3daf1751d95c34a1963b507549c9d7dc97543e48"
+        private const val ROOTFS_SHA256 = "f92e577b04b0d751aaf44c6e40bd772aa834ce2b7bf7b695799f44fecf943d46"
         private const val XKB_SHA256 = "ef3e89f59155df159d528531fe7f61dd141ffbe4b91b870e6f96510f0c630b58"
-        private const val OFFLINE_CORE_ASSET = "offline/core-dev-arm64.tar"
-        private const val OFFLINE_CORE_SHA256 = "c1a5d21dadd7a750badfb679f135f0f9dffdb3b3f5778861aad5438017bdafd6"
-        private const val CLI_EXTRA_ASSET = "offline/cli-extra-arm64.tar"
-        private const val CLI_EXTRA_SHA256 = "ecfafa286906656819106be66a71cc213652606a9a43d2d06c2766f2efd020f0"
-        private const val FACTORY_APPS_ASSET = "offline/factory-apps-arm64.tar"
-        private const val FACTORY_APPS_MARKER_VERSION = "factory-apps-v3-plank"
-        private const val FACTORY_APPS_SHA256 = "f33dce8e5b140159d9e0ddcb81876469b8be9ec7e2b67daa3c6b62d61153e05d"
+        private const val BOOTSTRAP_ASSET = "offline/bootstrap-arm64.tar"
+        private const val BOOTSTRAP_ASSET_SIZE = 342487040L
+        private const val BOOTSTRAP_SHA256 = "374f1223ab619a153fbacfaf8e30fea474785a5a153f3215be58565e2e6e8f4a"
+        private const val BOOTSTRAP_MARKER_VERSION = "bootstrap-v1"
+        private const val BOOTSTRAP_PACKAGE_LIST_ASSET = "offline/bootstrap-packages.txt"
+        private const val BOOTSTRAP_PACKAGE_LIST = "bootstrap-packages.txt"
         private const val VENDOR_APPS_ASSET = "offline/vendor-apps-arm64.tar"
-        private const val VENDOR_APPS_SHA256 = "1a555fb917a41cece2f308f23f246d621335f9c68b70a23c3037442db345505a"
+        private const val VENDOR_APPS_ASSET_SIZE = 109612182L
+        private const val VENDOR_APPS_MARKER_VERSION = "vendor-apps-v3"
+        private const val VENDOR_APPS_SHA256 = "2baeb0e5767633698d4d225f29ee78c2e9afc5a7bc4ccefd5c0d4ee8276aebd7"
         private const val MESA_GPU_ASSET = "offline/mesa-for-android-container_26.2.0-devel-20260709_ubuntu_noble_arm64.tar"
-        private const val MESA_GPU_SHA256 = "56716d9db06d8b1e16b4b4be7279dea351042e4122961fa25b78d2d603f4baeb"
-        private const val MESA_GPU_ASSET_SIZE = 47237120L
-        private const val GPU_TOOLS_ASSET = "offline/gpu-tools-arm64.tar"
-        private const val GPU_TOOLS_SHA256 = "bccec0a1e963ae830b5c6596752bb63d551267dfaa96c47d806c485c6006b3ad"
+        private const val MESA_GPU_SHA256 = "8a1e70e51091df925da3d426c73a71f2ae965bd16d617b0bf366cce5e5bafdb1"
+        private const val MESA_GPU_ASSET_SIZE = 12792268L
         private const val DESKTOP_WALLPAPER_ASSET = "desktop/ubuntu-wallpaper.png"
-        private const val WHITESUR_THEME_ASSET = "desktop/whitesur-xfce.tar"
-        private const val WHITESUR_THEME_SHA256 = "d23b218f5877ad2f0a5c881ec4111d638753d510b3e00b7cdcdb63101a60d268"
-        private const val WHITESUR_THEME_ASSET_SIZE = 73728000L
+        private const val WHITESUR_GTK_ASSET = "desktop/whitesur-gtk.tar"
+        private const val WHITESUR_GTK_SHA256 = "d84ad2e194c33a07fad6dbc8b0e08af6851253d92c99e7120450abc5857ea3a1"
+        private const val WHITESUR_GTK_ASSET_SIZE = 406945L
+        private const val TELA_CIRCLE_ASSET = "desktop/tela-circle.tar"
+        private const val TELA_CIRCLE_SHA256 = "cb34fb564dab6c6e6e4cb2d61f5f7d79b22162da95bdce1adb0af1f6234a50b9"
+        private const val TELA_CIRCLE_ASSET_SIZE = 3514547L
         private const val FETCH_SCRIPT_ASSET = "desktop/doro-fetch.sh"
         private const val FASTFETCH_FILE = "fastfetch-linux-aarch64.deb"
         private const val FASTFETCH_ASSET = "offline/fastfetch/$FASTFETCH_FILE"
@@ -1258,19 +1208,6 @@ private fun prepareContainerMounts() {
         private const val SPARK_STORE_FILE = "spark-store_5.2.1.0_arm64.deb"
         private const val SPARK_STORE_ASSET = "offline/spark-store/$SPARK_STORE_FILE"
         private const val SPARK_STORE_SHA256 = "ff27031880ba3c56fd76ea40dcc36d41c99da7c9038934982f4fba0ce86d2af7"
-        private const val SPARK_STORE_DEPS_ASSET = "offline/spark-store-deps-arm64.tar"
-        private const val SPARK_STORE_DEPS_SHA256 = "53390e59042dde4fd4f447011d6fe28c4109c605ee268f6d716f73cf7f2dd789"
-        private const val LOCALES_FILE = "locales_2.39-0ubuntu8.8_all.deb"
-        private const val LOCALES_ASSET = "offline/factory-fix/$LOCALES_FILE"
-        private val FACTORY_FIX_ASSETS = listOf(
-            "dbus_1.14.10-4ubuntu4.1_arm64.deb",
-            "dbus-bin_1.14.10-4ubuntu4.1_arm64.deb",
-            "dbus-daemon_1.14.10-4ubuntu4.1_arm64.deb",
-            "dbus-session-bus-common_1.14.10-4ubuntu4.1_all.deb",
-            "dbus-system-bus-common_1.14.10-4ubuntu4.1_all.deb",
-            "libpolkit-gobject-1-0_124-2ubuntu1.24.04.3_arm64.deb",
-            LOCALES_FILE
-        )
         private const val COMMAND_TIMEOUT_MS = 30L * 60L * 1000L
         private const val COMMAND_IDLE_TIMEOUT_MS = 5L * 60L * 1000L
         private const val OFFLINE_INSTALL_TIMEOUT_MS = 90L * 60L * 1000L
@@ -1278,5 +1215,6 @@ private fun prepareContainerMounts() {
         private const val WATCHDOG_POLL_MS = 1_000L
         private const val PROCESS_KILL_GRACE_MS = 5_000L
         private const val MAX_LOG_BYTES = 5L * 1024L * 1024L
+        private const val MAX_CAPTURED_OUTPUT_CHARS = 256 * 1024
     }
 }

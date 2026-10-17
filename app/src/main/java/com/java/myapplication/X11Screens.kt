@@ -78,7 +78,7 @@ fun TerminalSettingsPage(onBack: () -> Unit, onMorePermissions: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("‹", Modifier.clickable(onClick = onBack).padding(12.dp), color = XAccent, fontSize = 38.sp)
-            Text("终端设置", color = XText, fontSize = 25.sp)
+            Text("LinuxHub 设置", color = XText, fontSize = 25.sp)
         }
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
@@ -89,8 +89,8 @@ fun TerminalSettingsPage(onBack: () -> Unit, onMorePermissions: () -> Unit) {
             SettingSection("X11 显示输出")
             ChoiceSetting("分辨率模式", "displayResolutionMode", listOf("原生" to "native", "缩放" to "scaled", "精确" to "exact", "自定义" to "custom"), prefs)
             SliderSetting("显示缩放", "displayScale", 30f, 300f, 100f, prefs)
-            ChoiceSetting("精确分辨率", "displayResolutionExact", listOf("1280×720" to "1280x720", "1280×1024" to "1280x1024", "1600×900" to "1600x900", "1920×1080" to "1920x1080"), prefs)
-            TextSetting("自定义分辨率", "displayResolutionCustom", "1280x1024", prefs)
+            ChoiceSetting("精确分辨率", "displayResolutionExact", listOf("1280×720" to "1280x720", "1280×800" to "1280x800", "1280×1024" to "1280x1024", "1600×900" to "1600x900", "1920×1080" to "1920x1080", "1920×1200" to "1920x1200"), prefs)
+            TextSetting("自定义分辨率", "displayResolutionCustom", "1280x800", prefs)
             ChoiceSetting("过滤模式", "displayFilteringMode", listOf("最近邻" to "nearest", "双线性" to "bilinear"), prefs)
             SwitchSetting("自动调整分辨率", "adjustResolution", false, prefs)
             SwitchSetting("拉伸显示", "displayStretch", false, prefs)
@@ -241,12 +241,38 @@ private fun SliderSetting(
     }
 }
 
+private const val DESKTOP_LOG_TAIL_CHARS = 16 * 1024
+
+private fun enforceDesktopAspectDefaults(prefs: SharedPreferences) {
+    if (prefs.getBoolean("doroDesktop16x10V2", false)) return
+    prefs.edit()
+        .putString("displayResolutionMode", "custom")
+        .putString("displayResolutionCustom", "1280x800")
+        .putBoolean("displayStretch", false)
+        .putBoolean("adjustResolution", false)
+        .putBoolean("doroDesktop16x10V2", true)
+        .apply()
+}
+
+private fun awaitDesktopProcess(process: Process): Pair<Int, String> {
+    val tail = StringBuilder()
+    process.inputStream.bufferedReader().useLines { lines ->
+        lines.forEach { line ->
+            tail.append(line).append('\n')
+            val overflow = tail.length - DESKTOP_LOG_TAIL_CHARS
+            if (overflow > 0) tail.delete(0, overflow)
+        }
+    }
+    return process.waitFor() to tail.toString()
+}
+
 @Composable
 fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val runtime = remember { X11RuntimeManager.get(context).runtime as LorieX11Runtime }
     val container = remember { LinuxContainerManager(context) }
     val prefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(context) }
+    enforceDesktopAspectDefaults(prefs)
     if (!prefs.getBoolean("doroTrueFullscreenV2", false)) {
         prefs.edit()
             .putBoolean("fullscreen", true)
@@ -304,10 +330,7 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
                 container.startDesktop(runtime.display, prefs.getBoolean("gpuAcceleration", true))
             }
             desktopProcess = process
-            val output = withContext(Dispatchers.IO) {
-                process.inputStream.bufferedReader().use { it.readText() }
-            }
-            val exitCode = withContext(Dispatchers.IO) { process.waitFor() }
+            val (exitCode, output) = withContext(Dispatchers.IO) { awaitDesktopProcess(process) }
             if (desktopProcess === process) {
                 error = if (output.isBlank()) {
                     "XFCE会话已退出，退出码：$exitCode"
@@ -315,6 +338,7 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
                     "XFCE会话已退出，退出码：$exitCode\n$output"
                 }
                 desktopProcess = null
+                desktopStarting = false
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -394,7 +418,7 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                 Text(error.orEmpty(), color = Color.White, fontSize = 12.sp)
                 Spacer(Modifier.height(18.dp))
-                Button(onClick = onBack) { Text("返回终端") }
+                Button(onClick = onBack) { Text("返回 LinuxHub") }
             }
         } else if (!serverReady) {
             Column(

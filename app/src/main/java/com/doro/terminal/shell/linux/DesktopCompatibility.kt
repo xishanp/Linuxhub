@@ -34,8 +34,10 @@ applied="${'$'}(xfconf-query -c "${'$'}channel" -p "${'$'}last_image" 2>/dev/nul
 [ "${'$'}applied" = "${'$'}wallpaper" ] || exit 1
 """
 
-    fun sessionScript(display: String, username: String): String =
-        "export DISPLAY=${quote(display)}; " +
+    fun sessionScript(display: String, username: String): String {
+        val wallpaperDir = "/home/$username/.config/xfce4"
+        val wallpaperMarker = "$wallpaperDir/.doro-wallpaper-v1"
+        return "export DISPLAY=${quote(display)}; " +
             "if locale -a 2>/dev/null | grep -qi '^zh_CN\\.utf8$'; then " +
             "export LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 LANGUAGE=zh_CN:zh; " +
             "else export LANG=C.UTF-8 LC_ALL=C.UTF-8; unset LANGUAGE; fi; " +
@@ -57,10 +59,12 @@ applied="${'$'}(xfconf-query -c "${'$'}channel" -p "${'$'}last_image" 2>/dev/nul
             "pkill -9 -x xfce4-power-manager 2>/dev/null || true; pkill -9 -x upowerd 2>/dev/null || true; sleep 2; " +
             "exec dbus-launch --exit-with-session /bin/sh -c '" +
             "command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d; " +
-            "xfconf-query -c xsettings -p /Net/ThemeName -s WhiteSur-Dark 2>/dev/null || true; " +
-            "xfconf-query -c xsettings -p /Net/IconThemeName -s WhiteSur 2>/dev/null || true; " +
-            "(sleep 5; doro-apply-wallpaper >/tmp/doro-wallpaper.log 2>&1; xfdesktop --reload >/dev/null 2>&1 || true) & " +
+            "if [ ! -e \"$wallpaperMarker\" ]; then " +
+            "(sleep 5; if doro-apply-wallpaper >/tmp/doro-wallpaper.log 2>&1; then " +
+            "mkdir -p \"$wallpaperDir\"; touch \"$wallpaperMarker\"; fi; " +
+            "xfdesktop --reload >/dev/null 2>&1 || true) & fi; " +
             "exec startxfce4'"
+    }
 
     fun patchDesktop(content: String, name: String): String {
         val gpuPrefix = "/usr/local/bin/doro-gpu-run "

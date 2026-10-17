@@ -6,31 +6,38 @@ import org.junit.Test
 
 class OfflineInstallScriptTest {
     @Test
-    fun installsDependencyPackagesBeforeMainPackages() {
-        val script = OfflineInstallScript.build()
-        assertTrue(script.contains("-i /var/cache/doro-offline/deps/*.deb"))
-        assertTrue(script.indexOf("deps/*.deb") < script.indexOf("packages/*.deb"))
+    fun failsWhenManifestIsMissingOrEmpty() {
+        val script = OfflineInstallScript.build("bootstrap-packages.txt")
+        assertTrue(script.contains("manifest=/var/cache/doro-offline/bootstrap-packages.txt"))
+        assertTrue(script.contains("test -s \"\$manifest\""))
     }
 
     @Test
-    fun neverRunsOnlineFixDuringOfflineStage() {
-        val script = OfflineInstallScript.build()
-        assertFalse(script.contains("apt-get -f install"))
+    fun unpacksBeforeConfiguringAllPackages() {
+        val script = OfflineInstallScript.build("bootstrap-packages.txt")
+        assertTrue(script.contains("xargs -a \"\$manifest\" dpkg \$dpkg_opts --unpack"))
+        assertTrue(script.indexOf("--unpack") < script.indexOf("--configure -a"))
+    }
+
+    @Test
+    fun neverUsesOnlinePackageRepair() {
+        val script = OfflineInstallScript.build("bootstrap-packages.txt")
+        assertFalse(script.contains("apt-get"))
+        assertFalse(script.contains("|| true"))
     }
 
     @Test
     fun suppressesAllConfigurationPrompts() {
-        val script = OfflineInstallScript.build()
+        val script = OfflineInstallScript.build("bootstrap-packages.txt")
         assertTrue(script.contains("DEBIAN_FRONTEND=noninteractive"))
         assertTrue(script.contains("--force-confdef --force-confold"))
         assertTrue(script.contains("UCF_FORCE_CONFFOLD=1"))
     }
 
     @Test
-    fun streamsDpkgOutputToWatchdog() {
-        val script = OfflineInstallScript.build()
-        assertTrue(script.contains("| tee /tmp/doro-deps.log"))
-        assertTrue(script.contains("| tee /tmp/doro-packages.log"))
-        assertFalse(script.contains(">/tmp/doro-deps.log 2>&1"))
+    fun auditsTheFinalDpkgState() {
+        val script = OfflineInstallScript.build("bootstrap-packages.txt")
+        assertTrue(script.contains("dpkg -C"))
+        assertTrue(script.indexOf("--configure -a") < script.indexOf("dpkg -C"))
     }
 }

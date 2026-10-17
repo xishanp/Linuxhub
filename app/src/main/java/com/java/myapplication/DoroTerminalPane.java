@@ -40,7 +40,7 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
         terminalView.setTextSize(22);
         terminalView.setBackgroundColor(Color.rgb(35, 35, 35));
         addView(terminalView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        session = new TerminalSession(shellPath, cwd, args, env, 5000, this);
+        session = new TerminalSession(shellPath, cwd, args, env, 2000, this);
         terminalView.attachSession(session);
         terminalView.requestFocus();
         terminalView.setOnTouchListener((v, event) -> {

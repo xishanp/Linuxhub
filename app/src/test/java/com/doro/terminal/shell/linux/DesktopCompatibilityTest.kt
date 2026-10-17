@@ -8,7 +8,7 @@ class DesktopCompatibilityTest {
         val script = DesktopCompatibility.sessionScript(":0", "doro")
         assertTrue(DesktopCompatibility.systemServicesScript().contains("dbus-daemon --system"))
         assertTrue(script.contains("dbus-launch --exit-with-session"))
-        assertTrue(script.contains("MOZ_DISABLE_CONTENT_SANDBOX=1"))
+        assertTrue(script.contains("MESA_LOADER_DRIVER_OVERRIDE=zink"))
         assertTrue(script.contains("LIBGL_ALWAYS_SOFTWARE=1"))
     }
 
@@ -16,9 +16,9 @@ class DesktopCompatibilityTest {
         val firefox = DesktopCompatibility.patchDesktop("Exec=/usr/local/bin/doro-gpu-run firefox %u", "firefox.desktop")
         val qq = DesktopCompatibility.patchDesktop("Exec=/usr/local/bin/doro-gpu-run /opt/QQ/qq %U", "qq.desktop")
         val thunar = DesktopCompatibility.patchDesktop("Exec=/usr/local/bin/doro-gpu-run thunar %F", "thunar.desktop")
-        assertTrue(firefox == "Exec=firefox %u")
-        assertTrue(qq == "Exec=/opt/QQ/qq --no-sandbox %U")
-        assertTrue(thunar == "Exec=thunar %F")
+        assertTrue(firefox == "Exec=/usr/local/bin/doro-gpu-run firefox %u")
+        assertTrue(qq == "Exec=/usr/local/bin/doro-gpu-run /opt/QQ/qq --no-sandbox %U")
+        assertTrue(thunar == "Exec=/usr/local/bin/doro-gpu-run thunar %F")
         assertTrue(DesktopCompatibility.patchDesktop(thunar, "thunar.desktop") == thunar)
     }
 }

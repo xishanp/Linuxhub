@@ -10,7 +10,7 @@ class XfceWallpaperTest {
         assertTrue(script.contains("last-image"))
         assertTrue(script.contains("image-path"))
         assertTrue(script.contains("image-style"))
-        assertTrue(script.contains("/usr/share/backgrounds/doro-ubuntu.png"))
+        assertTrue(script.contains("/usr/share/backgrounds/xfce/doro-ubuntu.png"))
     }
 
     @Test fun desktopSessionAppliesWallpaperInsideSessionBus() {
@@ -18,5 +18,7 @@ class XfceWallpaperTest {
         assertTrue(script.contains("xfdesktop --reload"))
         assertTrue(script.contains("doro-apply-wallpaper"))
         assertTrue(script.contains("dbus-launch --exit-with-session"))
+        assertTrue(script.contains("if [ ! -e \"/home/doro/.config/xfce4/.doro-wallpaper-v1\" ]"))
+        assertTrue(script.contains("mkdir -p \"/home/doro/.config/xfce4\""))
     }
 }

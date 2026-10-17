@@ -1,117 +1,94 @@
-# doroUbuntu
+# LinuxHub
 
 English | [简体中文](README.md)
 
-## Overview
+LinuxHub is an offline Ubuntu desktop environment for Android ARM64 devices, currently based on Ubuntu 24.04, XFCE, Termux:X11, and PulseAudio.
 
-doroUbuntu is a complete Linux environment for Android devices. It runs Ubuntu 24.04 and provides an XFCE desktop through Termux:X11.
+## Current Status
 
-The project integrates the Turnip and Zink graphics stack. Applications inherit GPU acceleration by default, while the desktop core uses a stable rendering path. Adreno 740 has been verified, and Firefox keeps graphics acceleration enabled.
+- Display name: `LinuxHub`
+- applicationId: `com.linuxhub.app`
+- versionName: `1.1.902`
+- versionCode: `70`
+- Build type: debug only
+- Release signing: not configured
+- Clean-device initialization: final verification still pending
 
-## Features
+This branch is a rebuild of 1.1.9, not another patch layer on top of the old installer.
 
-- Complete Ubuntu 24.04 user space
-- XFCE desktop environment
-- Termux:X11 graphics output
-- Turnip graphics driver
-- Zink OpenGL acceleration
-- GPU acceleration for applications
-- Graphics acceleration in Firefox
-- One-click offline deployment
-- Visible installation tasks
-- Installation watchdog protection
-- fastfetch terminal welcome screen
+## Architecture Direction
 
-## Desktop Experience
+- Kotlin/Java handle the Android UI and integration.
+- X11, PRoot, and system bridges keep their C/C++ native runtime.
+- The stable C ABI layers are not being rewritten merely to claim a single-language codebase. Rust remains an option for future components, not a reason to rewrite the current X11/PRoot stack.
+- Offline packages are declared in one place: `tools/offline/package-roots.txt`; versions and hashes are locked in `tools/offline/offline-bootstrap.lock.json`.
+- Initialization performs one archive extraction, one `dpkg --unpack`, one `dpkg --configure -a`, and a strict final `dpkg -C` audit.
+- The installer does not use online `apt-get update`, `apt-get -f install`, `|| true`, or staged repair scripts to hide failures.
+- The Turnip/Zink acceleration path is intentionally unchanged in this rebuild.
 
-- macOS-inspired layout
-- WhiteSur dark theme
-- WhiteSur icon pack
-- Red, yellow, and green window buttons
-- Window buttons on the left
-- Plank dock
-- Dock icon zoom on hover
-- Apple-style menu icon
+## Default System
 
-The default dock includes:
+The default install contains the base system, XFCE, X11, audio, input method, Bluetooth, network management, a file manager, Firefox, Spark Store, and required runtime libraries.
 
-- Firefox
-- Spark App Store
-- QQ
-- WeChat
+Python, Node.js, GCC, CMake, Java, Rust, Go, AI environments, and Jupyter are not installed by default. They are explicit optional components, not part of the base image.
 
-## Development Environment
+First-run desktop defaults are written only once:
 
-Common development tools are preinstalled:
+- Resolution: `1280x800`
+- Aspect ratio: 16:10
+- Stretch: disabled
+- Automatic resolution adjustment: disabled
+- Wallpaper: green Ubuntu wallpaper
+- GTK theme: WhiteSur-Dark
+- Icon theme: Tela Circle
 
-- Python
-- GCC
-- CMake
-- Java
-- Rust
-- Go
-- Node.js
-- Jupyter
+Later user changes to resolution, wallpaper, theme, panel, or icons are not overwritten on every launch.
 
-## Requirements
+## Build
 
-- An Android device
-- At least 10 GB of free storage
-- A reasonably powerful device
-- A compatible GPU for acceleration
-- About 30 minutes for first deployment
+```bash
+export JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
+export ANDROID_HOME='/Users/l/Library/Android/sdk'
+sh ./gradlew :app:testDebugUnitTest --no-daemon
+sh ./gradlew :app:assembleDebug --no-daemon
+```
 
-## Installation
+APK output:
 
-1. Download and install the APK.
-2. Open doroUbuntu.
-3. Start one-click deployment.
-4. Wait for all active tasks to finish.
-5. Follow the in-app prompt to launch the desktop.
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
 
-The installer does not display fake progress. Active tasks remain visible and are protected by a watchdog. Do not force-stop the app or clear it from the background during deployment.
+## Offline Assets
 
-## Device Compatibility
+Large assets are not stored in Git:
 
-Currently verified:
+- `app/src/main/assets/offline/bootstrap-arm64.tar`
+- `app/src/main/assets/offline/vendor-apps-arm64.tar`
+- `app/src/main/assets/rootfs/ubuntu-base-24.04.4-base-arm64.tar`
 
-- Qualcomm Adreno 740
-- Turnip graphics driver
-- Zink graphics acceleration
+See [OFFLINE_ASSETS.md](OFFLINE_ASSETS.md) for generation and packaging details.
 
-Other GPUs and Android versions have not been fully tested. Mali GPUs, older Adreno GPUs, customized Android systems, and strict background limits may affect installation, startup, or rendering.
+## Installation and Limits
 
-Device reports are welcome. Please include the device model, SoC, Android version, results, and logs.
+- ARM64 only.
+- Reserve at least 5 GB of free storage.
+- Keep the app in the foreground during initialization.
+- The first-run target is 5–6 minutes; final timing depends on real-device testing.
+- The current debug APK is not a release artifact. A release keystore and signing configuration must be added before publishing.
+- Data from the old applicationId is not migrated automatically.
 
-## Known Issues and Risks
+## Verification Priorities
 
-- First deployment takes time
-- The APK and offline assets are large
-- GPU compatibility varies by device
-- Background restrictions may interrupt deployment
-- Insufficient storage may cause failure
-- Some Android systems may restrict file access
-- Debug builds are not stable releases
-
-Back up important data before testing. Keep error messages and logs when reporting a problem.
-
-## Current Version
-
-Version: `1.1.9Debug`
-
-APK: `doroUbuntu-1.1.9Debug.apk`
-
-## Bug Reports
-
-Please include:
-
-- Device model
-- SoC and GPU
-- Android version
-- System ROM
-- Reproduction steps
-- Screenshots or logs
+- Offline initialization from a clean state.
+- Empty `dpkg -C` audit for all 583 bootstrap packages.
+- Firefox `ldd` reports no missing libraries.
+- XFCE, X11, audio, Bluetooth, networking, and input method behavior.
+- 16:10 output without stretching and correct first-run defaults.
+- Turnip/Zink normal path and software fallback.
+- Shizuku authorization and X11 service binding after the package rename.
+- Initialization time, rootfs size, and peak memory usage.
 
 ## License
 
-License information is pending. Before public distribution, verify the licenses of the source code, themes, icons, drivers, and bundled software.
+Verify the licenses and redistribution terms of the source, themes, icons, drivers, Firefox, Spark Store, and all bundled software before publishing.

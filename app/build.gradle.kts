@@ -9,11 +9,11 @@ android {
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
-        applicationId = "com.doro.terminal.shell"
+        applicationId = "com.linuxhub.app"
         minSdk = 26
         targetSdk = 28
-        versionCode = 69
-        versionName = "1.1.9Debug"
+        versionCode = 70
+        versionName = "1.1.902"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

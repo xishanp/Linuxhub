@@ -47,8 +47,8 @@ enum class InstallComponent(
     UBUNTU("Ubuntu 24.04", "基础组件", required = true, defaultSelected = true),
     SUDO("sudo", "基础组件", required = true, defaultSelected = true, packages = listOf("sudo")),
     APT("APT", "基础组件", required = true, defaultSelected = true),
-    GIT("Git", "基础组件", defaultSelected = true, packages = listOf("git")),
-    PYTHON("Python", "基础组件", defaultSelected = true, packages = listOf("python3", "python3-pip", "python3-venv")),
+    GIT("Git", "基础组件", packages = listOf("git")),
+    PYTHON("Python", "基础组件", packages = listOf("python3", "python3-pip", "python3-venv")),
     CHINESE("中文语言环境", "基础组件", defaultSelected = true, packages = listOf("locales", "language-pack-zh-hans", "fonts-noto-cjk")),
 
     DESKTOP("XFCE 图形桌面", "桌面环境", defaultSelected = true),

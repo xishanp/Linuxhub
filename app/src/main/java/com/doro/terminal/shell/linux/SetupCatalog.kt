@@ -3,26 +3,29 @@ package com.doro.terminal.shell.linux
 object SetupCatalog {
     val builtInComponents: Set<InstallComponent> = setOf(
         InstallComponent.SUDO,
-        InstallComponent.GIT,
-        InstallComponent.PYTHON,
         InstallComponent.CHINESE,
-        InstallComponent.NODE,
         InstallComponent.DESKTOP,
         InstallComponent.XFCE,
         InstallComponent.X11,
         InstallComponent.PULSEAUDIO,
-        InstallComponent.FILE_MANAGER,
-        InstallComponent.FIREFOX,
+        InstallComponent.FILE_MANAGER
+    )
+
+    private val onDemandComponents: Set<InstallComponent> = setOf(
+        InstallComponent.GIT,
+        InstallComponent.PYTHON,
+        InstallComponent.NODE,
         InstallComponent.GCC,
         InstallComponent.CMAKE,
         InstallComponent.JAVA,
         InstallComponent.RUST,
         InstallComponent.GO,
         InstallComponent.PYTHON_AI,
-        InstallComponent.JUPYTER
+        InstallComponent.JUPYTER,
+        InstallComponent.FIREFOX
     )
 
-    val hiddenComponents: Set<InstallComponent> = builtInComponents + setOf(
+    val hiddenComponents: Set<InstallComponent> = builtInComponents + onDemandComponents + setOf(
         InstallComponent.UBUNTU,
         InstallComponent.APT
     )

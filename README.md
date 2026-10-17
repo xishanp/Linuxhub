@@ -1,89 +1,93 @@
-# doroUbuntu
+# LinuxHub
 
 [English](README_EN.md) | 简体中文
 
-## 项目介绍
+LinuxHub 是面向 Android ARM64 设备的离线 Ubuntu 桌面环境，当前基于 Ubuntu 24.04、XFCE、Termux:X11 和 PulseAudio。
 
-doroUbuntu 是安卓离线 Ubuntu 桌面环境，集成 Ubuntu 24.04、XFCE、Termux:X11 与 PulseAudio。
+## 当前状态
 
-## 当前版本
+- 显示名：`LinuxHub`
+- applicationId：`com.linuxhub.app`
+- versionName：`1.1.902`
+- versionCode：`70`
+- 构建类型：debug（仅用于安装和调试）
+- release 签名：尚未配置
+- 真机从零初始化：尚未完成最终验收
 
-- 版本：`1.1.9Debug`
-- APK：`doroUbuntu-1.1.9Debug.apk`
-- 状态：已完成全新安装验收
+当前分支是在重做 1.1.9，不是给旧安装流程继续叠加修复。
 
-## 主要特性
+## 重构方向
 
-- Ubuntu 24.04 离线初始化
-- XFCE 桌面环境
-- 内嵌 Termux:X11
-- PulseAudio 声音桥
-- Turnip 与 Zink 图形栈
-- fastfetch 终端欢迎页
-- 桌面默认横屏
-- 启动画面保留 2.5 秒
+- UI 与 Android 集成使用 Kotlin/Java；X11、PRoot 和系统桥接保留 C/C++ 原生运行时。
+- 不为了“单一语言”重写已经稳定、且依赖 C ABI 的 X11/PRoot 层。Rust 可作为以后新组件的选择，但不值得在本版本重写底层。
+- 离线系统改为一个声明式包池：`tools/offline/package-roots.txt` 是唯一手工包清单，`tools/offline/offline-bootstrap.lock.json` 锁定版本和哈希。
+- 初始化只执行一次解压、一次 `dpkg --unpack`、一次 `dpkg --configure -a`，最后用 `dpkg -C` 严格审计。
+- 不再使用在线 `apt-get update`、`apt-get -f install`、`|| true` 或分阶段补丁修复来掩盖安装错误。
+- 硬件加速核心不在此次重构中改动，Turnip/Zink 保持原有路径。
 
-## GPU 方案
+## 默认系统
 
-桌面壳使用软件渲染。应用入口通过 `/usr/local/bin/doro-gpu-run` 使用 Zink。Turnip 与 Mesa 保持不变，不全局强制 Zink，避免桌面黑屏。
+默认只安装基础系统、XFCE、X11、音频、输入法、蓝牙、网络管理、文件管理器、Firefox、星火商店和必要运行库。
 
-验证命令：
+Python、Node.js、GCC、CMake、Java、Rust、Go、AI 环境和 Jupyter 不作为默认安装项。需要时应作为明确的可选组件安装，而不是重新塞回基础镜像。
+
+桌面默认值只在首次初始化时写入：
+
+- 分辨率：`1280x800`
+- 比例：16:10
+- 拉伸：关闭
+- 自动调整分辨率：关闭
+- 壁纸：绿色 Ubuntu 壁纸
+- GTK：WhiteSur-Dark
+- 图标：Tela Circle
+
+用户之后修改的分辨率、壁纸、主题、面板或图标不会被启动流程反复覆盖。
+
+## 构建
 
 ```bash
-doro-gpu-run glxinfo -B
+export JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
+export ANDROID_HOME='/Users/l/Library/Android/sdk'
+sh ./gradlew :app:testDebugUnitTest --no-daemon
+sh ./gradlew :app:assembleDebug --no-daemon
 ```
 
-已验证 Zink Vulkan、Turnip Adreno 740 与硬件加速。
+APK 输出：
 
-## 桌面入口
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
 
-以下六个入口支持缺失 `Exec` 自动恢复，并使用 GPU 包装器：
+## 离线资产
 
-- Firefox
-- 星火应用商店
-- VLC
-- LibreOffice
-- GIMP
-- Thunar
-## 界面预览
+大体量资产不进入 Git：
 
-### 离线部署流程
+- `app/src/main/assets/offline/bootstrap-arm64.tar`
+- `app/src/main/assets/offline/vendor-apps-arm64.tar`
+- `app/src/main/assets/rootfs/ubuntu-base-24.04.4-base-arm64.tar`
 
-| 首页 | 文件授权 | 系统部署 | 创建用户 | 部署完成 |
-|---|---|---|---|---|
-| ![首页](assets/screenshots/01-home.jpg) | ![授权](assets/screenshots/02-permission.jpg) | ![部署](assets/screenshots/03-deploying.jpg) | ![用户](assets/screenshots/04-user.jpg) | ![完成](assets/screenshots/05-finished.jpg) |
+生成和发布说明见 [OFFLINE_ASSETS.md](OFFLINE_ASSETS.md)。
 
-### Ubuntu运行效果
+## 安装与限制
 
-| 内置终端 | XFCE桌面 | Turnip与Zink |
-|---|---|---|
-| ![终端](assets/screenshots/06-terminal.jpg) | ![桌面](assets/screenshots/07-desktop.jpg) | ![GPU](assets/screenshots/08-gpu.jpg) |
+- 仅支持 `arm64-v8a`。
+- 首次初始化预留至少 5 GB 可用空间。
+- 初始化期间保持应用在前台，不要清理后台或强制退出。
+- 首次初始化目标时间为 5–6 分钟，最终以真机实测为准。
+- 当前 debug APK 不能作为正式发布包；发布前需要单独配置 release keystore 和签名。
+- 换包名后旧包数据不会自动继承，数据迁移策略尚未实现。
 
-## 安装方法
+## 验收重点
 
-
-1. 至少预留 10 GB 空间。
-2. 安装目录内的 APK。
-3. 打开应用并启动初始化。
-4. 等待离线任务全部完成。
-5. 按提示进入 XFCE 桌面。
-
-部署期间不要清理后台，也不要强制关闭应用。
-
-## 兼容性与限制
-
-当前已验证 Qualcomm Adreno 740。其他 GPU 和系统尚未完整验证。
-
-Firefox 保持软件视频解码。本版本不含实验性 MediaCodec 硬解桥。
-
-## 目录内容
-
-- APK：安装包
-- `SHA256SUMS.txt`：校验值
-- `RELEASE_1.1.9Debug_ZH.md`：中文说明
-- `RELEASE_1.1.9Debug_EN.md`：英文说明
-- `source/`：项目源码
+- 断网从零初始化是否一次通过。
+- 583 个 bootstrap 包的 `dpkg -C` 审计是否为空。
+- Firefox `ldd` 是否没有 `not found`。
+- XFCE、X11、音频、蓝牙、网络管理和输入法是否正常。
+- 16:10 是否无拉伸，首次默认值与后续用户修改是否互不干扰。
+- Turnip/Zink 正常路径及软件回退。
+- 改包名后的 Shizuku 重新授权和 X11 service 绑定。
+- 初始化耗时、rootfs 占用和内存峰值。
 
 ## 许可证
 
-发布前请确认代码、主题、图标、驱动和预装软件的授权条款。
+发布前必须核对代码、主题、图标、驱动、Firefox、星火商店及其他预装组件的许可证和分发条款。

@@ -30,3 +30,7 @@ local.properties
 /app/src/main/assets/offline/vendor-apps-arm64.tar
 /app/src/main/assets/offline/core-dev-arm64.tar
 /app/src/main/assets/rootfs/ubuntu-base-24.04.4-base-arm64.tar
+
+# Local offline build cache
+/.cache/
+/app/src/main/assets/offline/bootstrap-arm64.tar
