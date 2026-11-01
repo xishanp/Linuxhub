@@ -160,7 +160,9 @@ class LorieX11Runtime(
             throw failure
         }
     }
-override fun resize(width: Int, height: Int, densityDpi: Int) {
+
+    @Synchronized
+    override fun resize(width: Int, height: Int, densityDpi: Int) {
         if (state != X11State.RUNNING_ATTACHED) return
         val target = view ?: return
         val surface = target.holder.surface
