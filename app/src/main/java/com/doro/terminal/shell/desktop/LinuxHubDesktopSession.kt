@@ -52,9 +52,13 @@ object LinuxHubDesktopSession {
         requestedHeight: Int? = null,
     ): Status {
         val nativeSize = nativeDesktopSize(context)
-        val targetWidth = requestedWidth ?: nativeSize.first
-        val targetHeight = requestedHeight ?: nativeSize.second
-        require(targetWidth in 320..3840 && targetHeight in 240..2160) { "桌面尺寸超出范围" }
+        // Tablets report panels such as 3840x2512. Refusing that size made the
+        // local desktop unlaunchable, so scale the requested desktop into the
+        // supported range instead of rejecting the device.
+        val (targetWidth, targetHeight) = DesktopSizePolicy.fit(
+            requestedWidth ?: nativeSize.first,
+            requestedHeight ?: nativeSize.second,
+        )
         synchronized(lock) {
             val manager = LinuxContainerManager(context)
             require(manager.isInitialized()) { "Ubuntu 尚未初始化" }

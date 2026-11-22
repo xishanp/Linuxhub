@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import android.view.View
+import com.doro.terminal.shell.desktop.DesktopSizePolicy
 import com.doro.terminal.shell.desktop.DesktopFrameReadiness
 import com.doro.terminal.shell.desktop.DesktopDiagnostics
 import com.doro.terminal.shell.desktop.RemoteVideoProfilePolicy
@@ -431,8 +432,8 @@ class LorieX11Runtime(
         }
     }
 
-    fun sendHeadlessWindowSize(width: Int, height: Int) {
-        require(width in 320..3840 && height in 240..2160) { "桌面尺寸超出范围" }
+    fun sendHeadlessWindowSize(requestedWidth: Int, requestedHeight: Int) {
+        val (width, height) = DesktopSizePolicy.fit(requestedWidth, requestedHeight)
         Handler(Looper.getMainLooper()).post {
             if (attachedSurface?.isValid == true) {
                 Log.d(TAG, "Ignoring headless resize ${width}x$height while attached ${attachedWidth}x$attachedHeight")
