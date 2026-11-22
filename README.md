@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/09-gnome-desktop.jpg" alt="LinuxHub 2.0 在 Android 手机上运行 Ubuntu 24.04 GNOME 46 桌面" width="100%">
+  <img src="assets/screenshots/screenshot.jpg" alt="LinuxHub 2.0 在 Android 手机上运行 Ubuntu 24.04 GNOME 46 桌面" width="100%">
 </p>
 
 ---

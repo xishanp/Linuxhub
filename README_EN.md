@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <a href="assets/screenshots/09-gnome-desktop.jpg">View the LinuxHub 2.0 Ubuntu 24.04 GNOME 46 desktop screenshot</a>
+  <a href="assets/screenshots/screenshot.jpg">View the LinuxHub 2.0 Ubuntu 24.04 GNOME 46 desktop screenshot</a>
 </p>
 
 ---
