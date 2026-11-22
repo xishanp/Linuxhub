@@ -35,7 +35,7 @@
 </p>
 
 <p align="center">
-  <sub>No Root required · Runs locally on Android · No remote virtual machine · Official GNOME desktop</sub>
+  <sub>No Root required · PRoot container · Runs locally on Android · Official GNOME desktop</sub>
 </p>
 
 <p align="center">
@@ -68,7 +68,7 @@ LinuxHub 2.0 is the production release for Android ARM64 devices. This release u
 
 - Ubuntu 24.04.4 ARM64.
 - Official GNOME Shell 46, Mutter 46, and X11 compositor.
-- Runs locally on Android through Lorie X11 and PRoot, without a virtual machine.
+- Runs locally on Android through Lorie X11 and a PRoot container, without a virtual machine.
 - Complete Chinese environment, Yaru theme, Ubuntu Dock, desktop icons, and window management.
 - Nautilus, GNOME Settings, Terminal, Text Editor, and screenshot tools.
 - LibreOffice, Chrome, Thunderbird, Evince, Remmina, Transmission, Rhythmbox, Totem, Shotwell, Disks, System Monitor, Archive Manager, and other common applications.

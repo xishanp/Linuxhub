@@ -9,7 +9,7 @@ The format follows Keep a Changelog. Public release names use the project mythol
 ### Desktop
 
 - Ubuntu 24.04.4 ARM64 with official GNOME Shell 46 and Mutter 46 X11.
-- Lorie X11 and PRoot run the desktop locally on Android without a virtual machine.
+- Lorie X11 and a PRoot container run the desktop locally on Android without a virtual machine.
 - Chinese environment, Yaru theme, Ubuntu Dock, desktop icons, and window management.
 - Nautilus, GNOME Settings, Terminal, Text Editor, screenshot tools, LibreOffice, Chrome, Thunderbird, Evince, Remmina, Transmission, Rhythmbox, Totem, Shotwell, Disks, System Monitor, and Archive Manager.
 - Offline GNOME payload with 729 official Ubuntu DEBs covering desktop components and dependencies.

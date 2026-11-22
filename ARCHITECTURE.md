@@ -6,7 +6,7 @@
 
 ### 总览
 
-LinuxHub 在 Android ARM64 设备本地运行 Ubuntu 24.04.4 ARM64、官方 GNOME Shell 46、Mutter 46 X11、Lorie X11 和 PRoot。Android 负责画面、输入、音频、共享存储、生命周期与远程传输；Ubuntu 负责完整 Linux 用户空间、桌面和应用程序。
+LinuxHub 在 Android ARM64 设备本地运行 Ubuntu 24.04.4 ARM64、官方 GNOME Shell 46、Mutter 46 X11、Lorie X11 和 PRoot 容器。Android 负责画面、输入、音频、共享存储、生命周期与远程传输；Ubuntu 负责完整 Linux 用户空间、桌面和应用程序。
 
 ```mermaid
 flowchart TB
@@ -170,7 +170,7 @@ Phone speaker / headset
 
 ### Overview
 
-LinuxHub runs Ubuntu 24.04.4 ARM64, official GNOME Shell 46, Mutter 46 X11, Lorie X11, and PRoot locally on Android ARM64 devices. Android provides presentation, input, audio, shared storage, lifecycle management, and remote transport. Ubuntu provides the complete Linux user space, desktop, and applications.
+LinuxHub runs Ubuntu 24.04.4 ARM64, official GNOME Shell 46, Mutter 46 X11, Lorie X11, and a PRoot container locally on Android ARM64 devices. Android provides presentation, input, audio, shared storage, lifecycle management, and remote transport. Ubuntu provides the complete Linux user space, desktop, and applications.
 
 ```mermaid
 flowchart TB

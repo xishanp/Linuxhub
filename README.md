@@ -35,7 +35,7 @@
 </p>
 
 <p align="center">
-  <sub>无需 Root · Android 本地运行 · 不使用远程虚拟机 · 官方 GNOME 桌面</sub>
+  <sub>无需 Root · PRoot 容器 · Android 本地运行 · 官方 GNOME 桌面</sub>
 </p>
 
 <p align="center">
@@ -68,7 +68,7 @@ LinuxHub 2.0 是面向 Android ARM64 设备的正式版本。本次同时更新�
 
 - Ubuntu 24.04.4 ARM64。
 - 官方 GNOME Shell 46、Mutter 46、X11 合成器。
-- 通过 Lorie X11、PRoot 在 Android 本地运行，不使用虚拟机。
+- 通过 Lorie X11、PRoot 容器在 Android 本地运行，不使用虚拟机。
 - 完整中文环境、Yaru 主题、Ubuntu Dock、桌面图标、窗口管理。
 - Nautilus 文件管理器、GNOME 设置、终端、文本编辑器、截图工具。
 - LibreOffice、Chrome、Thunderbird、Evince、Remmina、Transmission、Rhythmbox、Totem、Shotwell、磁盘工具、系统监视器、归档管理器等常用应用。
