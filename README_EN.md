@@ -72,7 +72,7 @@ LinuxHub 2.0 is the production release for Android ARM64 devices. This release u
 - Complete Chinese environment, Yaru theme, Ubuntu Dock, desktop icons, and window management.
 - Nautilus, GNOME Settings, Terminal, Text Editor, and screenshot tools.
 - LibreOffice, Chrome, Thunderbird, Evince, Remmina, Transmission, Rhythmbox, Totem, Shotwell, Disks, System Monitor, Archive Manager, and other common applications.
-- The offline package embeds the official Ubuntu GNOME DEB set. The current lock file records 729 DEBs covering about 669 desktop components and their dependencies, with no need to fetch packages during initialization.
+- The offline package embeds the official Ubuntu GNOME DEB set. The current lock file records 729 DEBs covering desktop components and their dependencies, with no need to fetch packages during initialization.
 
 ## 2. Compatibility hooks and bridges
 
@@ -257,7 +257,7 @@ This release connects the complete path from browser download to locating, openi
 - APK size: approximately 990 MB
 - Distribution: GitHub Releases, not Google Play
 
-Current release file: `LinuxHub-Myth-Prometheus-groups-gpu-20261122-1100.apk`
+Current release file: `LinuxHub-Myth-Prometheus-groups.apk`
 
 ```text
 SHA-256: 0aa2d258510b19ce2b909863db9edeabfe10ad2a34314cd21a8d2c45c3cefea2

@@ -72,7 +72,7 @@ LinuxHub 2.0 是面向 Android ARM64 设备的正式版本。本次同时更新�
 - 完整中文环境、Yaru 主题、Ubuntu Dock、桌面图标、窗口管理。
 - Nautilus 文件管理器、GNOME 设置、终端、文本编辑器、截图工具。
 - LibreOffice、Chrome、Thunderbird、Evince、Remmina、Transmission、Rhythmbox、Totem、Shotwell、磁盘工具、系统监视器、归档管理器等常用应用。
-- 离线包内置官方 Ubuntu GNOME DEB 集合，当前锁文件记录 729 个 DEB，覆盖约 669 个桌面组件及其依赖，不依赖初始化现场补包。
+- 离线包内置官方 Ubuntu GNOME DEB 集合，当前锁文件记录 729 个 DEB，覆盖桌面组件与依赖，不依赖初始化现场补包。
 
 ## 二、兼容钩子与桥接层
 
@@ -257,7 +257,7 @@ LinuxHub 不是简单启动一个终端或套一层仿桌面。Android 与 glibc
 - 安装包约 990 MB
 - 通过 GitHub Releases 直接分发，不上 Google Play
 
-当前发布文件：`LinuxHub-Myth-Prometheus-groups-gpu-20261122-1100.apk`
+当前发布文件：`LinuxHub-Myth-Prometheus-groups.apk`
 
 ```text
 SHA-256: 0aa2d258510b19ce2b909863db9edeabfe10ad2a34314cd21a8d2c45c3cefea2
