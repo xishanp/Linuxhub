@@ -1,11 +1,11 @@
 <h1 align="center">LinuxHub</h1>
 
 <p align="center">
-  <strong>A complete Linux workstation on Android — and a local computer that Agents can operate directly.</strong>
+  <strong>A complete Ubuntu GNOME workstation running locally on Android ARM64 devices.</strong>
 </p>
 
 <p align="center">
-  Ubuntu 24.04 · XFCE · PRoot · Chinese Desktop · Local Agent · Shizuku Android Bridge
+  Ubuntu 24.04.4 · GNOME 46 · Lorie X11 · PRoot · Adreno / Mali · USB / LAN remote desktop
 </p>
 
 <p align="center">
@@ -18,361 +18,189 @@
 </p>
 
 <p align="center">
-  <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Android 9+" src="https://img.shields.io/badge/Android-9.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="ARM64" src="https://img.shields.io/badge/Architecture-ARM64-2563EB">
   <img alt="Ubuntu 24.04" src="https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white">
-  <img alt="XFCE" src="https://img.shields.io/badge/Desktop-XFCE-2284F2">
+  <img alt="GNOME 46" src="https://img.shields.io/badge/Desktop-GNOME%2046-4A86CF?logo=gnome&logoColor=white">
   <img alt="PRoot" src="https://img.shields.io/badge/Runtime-PRoot-6B7280">
-  <img alt="Local Agent" src="https://img.shields.io/badge/Agent-Local%20REST-7C3AED">
-  <img alt="Localized" src="https://img.shields.io/badge/Language-简体中文-DC2626">
-  <img alt="GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-2563EB">
+  <img alt="GPU" src="https://img.shields.io/badge/GPU-Adreno%20%2F%20Mali-7C3AED">
+  <img alt="Remote Desktop" src="https://img.shields.io/badge/Remote-USB%20%2F%20LAN-0F766E">
 </p>
 
 <p align="center">
-  <sub>No Root required · No remote VM dependency · Agent bound to loopback only</sub>
+  <sub>No Root required · Runs locally · No remote virtual machine</sub>
+</p>
+
+<p align="center">
+  <a href="assets/screenshots/09-gnome-desktop.jpg">View the LinuxHub 2.0 GNOME desktop screenshot</a>
 </p>
 
 ---
 
-## LinuxHub in one sentence
+## LinuxHub 2.0 · Myth-Prometheus
 
-> **LinuxHub brings an interactive, extensible Linux desktop to Android and exposes it to trusted Agents through a local control surface.**
+> **LinuxHub runs a real Ubuntu GNOME desktop locally on Android ARM64 devices, with dual-vendor GPU acceleration, browser-based remote desktop, offline initialization, and a complete application environment.**
 
-It unifies the terminal, Linux desktop, application windows, pointer and keyboard input, Android system capabilities, and automation APIs in one application. Users can work with LinuxHub like a regular Linux computer; trusted Agents can also execute multi-step workflows through the local REST API.
+This release uses Ubuntu 24.04.4 ARM64, official GNOME Shell 46, Mutter 46 X11, Lorie X11, PRoot, and Mesa 27. Android provides display transport, input, audio, storage, and lifecycle management. Ubuntu provides the full Linux user space and desktop applications.
 
-| Desktop | Runtime | Agent |
+| Release | Runtime | Desktop |
 |:---:|:---:|:---:|
-| Ubuntu 24.04 + XFCE | PRoot + Termux:X11 | Local REST API + Token |
-| Touch-first interaction for phones and tablets | Android system partitions remain untouched | Unified terminal, window, input, and Android bridge |
-| Chinese locale, fonts, and input method | D-Bus, PulseAudio, and shared storage | Structured calls, state queries, and post-action verification |
+| `Myth-Prometheus` | Ubuntu 24.04.4 + PRoot + Lorie X11 | Official GNOME Shell 46 / Mutter 46 |
+| Android 9+ ARM64 | Dual-vendor application GPU | USB / LAN remote desktop |
+| `com.linuxhub.myth` | Zink / Turnip / VirGL | H.264 + WebCodecs |
 
-## Why LinuxHub
+## Core capabilities
 
-### A Linux workspace, not just a terminal
-
-LinuxHub provides an Ubuntu userspace, the XFCE desktop, graphical applications, audio, file access, and essential desktop components. The terminal is one part of the workspace, not the whole product.
-
-### Built for Android interaction
-
-The desktop remains usable without a physical mouse or keyboard. One-finger movement controls the pointer, tap sends a left click, long press sends a right click, long press and move performs drag, and two-finger gestures scroll. Android soft keyboards and external input devices are supported.
-
-### Chinese support from the desktop foundation up
-
-Simplified Chinese is not an add-on patch. `zh_CN.UTF-8`, Noto CJK fonts, Fcitx5, desktop translations, Chinese menus, composed terminal input, and Agent UTF-8 text entry form one complete path.
-
-### An Agent-operable computer
-
-LinuxHub includes a local Agent API bound only to `127.0.0.1`. An Agent can enumerate applications and windows, start the desktop, capture and crop screenshots, move the pointer, enter text, execute terminal commands, and call Shizuku when Android system-level operations are required.
-
-### Local execution without a cloud VM
-
-Tasks run on the device. Agents connect to LinuxHub over loopback; there is no need to expose a public port or stream the desktop to a remote server.
-
-## Capabilities
-
-| Area | Available capability |
+| Area | Capabilities |
 | --- | --- |
-| Linux environment | Ubuntu 24.04 ARM64, PRoot, offline deployment, integrity checks, and initialization state |
-| Graphical desktop | XFCE, Termux:X11, headless mode, display dimensions, start, stop, and state recovery |
-| Terminal | Multi-session PTY, true color, Unicode, Chinese rendering, soft keyboard, and editing keys |
-| Applications and windows | Enumerate `.desktop` applications, launch programs, inspect windows, focus, PID, geometry, and state changes |
-| Graphical automation | Screenshots, window-relative crops, pointer, clicks, drag, scroll, keys, shortcuts, and text |
-| Clipboard | Read, write, and clear X11 `CLIPBOARD` |
-| Browser integration | Open URLs or paths and search with the browser's current default search engine |
-| Android bridge | Shizuku shell, screenshots, input, file transfer, APK install/remove, and browser-role changes |
-| Chinese desktop | Locale, CJK fonts, Fcitx5, desktop translations, Chinese menus, and candidate input |
-| Local Agent | Bearer token, tool catalog, structured calls, batches, timing, and failure-position reporting |
-| Command line | Built-in `lotusctl` inside the container, without an additional `curl` installation |
-| Mobile interaction | One-finger pointer, left click, complete long-press right click, drag, scroll, soft keyboard, and external devices |
+| Linux environment | Ubuntu 24.04.4 ARM64, PRoot, APT, sudo, Chinese locale, offline integrity checks |
+| GNOME desktop | Official GNOME Shell 46, Mutter 46 X11, Yaru, Ubuntu Dock, DING desktop icons |
+| Applications | Nautilus, Settings, Terminal, Text Editor, LibreOffice, Chrome, Thunderbird, and more |
+| GPU | Qualcomm Zink / Turnip, MediaTek VirGL / virpipe, automatic software fallback |
+| Browser | Chrome uses the product GPU launcher; new-window and private-window actions are preserved |
+| Terminal | Multi-session PTY, true color, Unicode, Chinese text, soft keyboard, editing keys |
+| Remote desktop | USB / LAN browser access, HTTPS, pairing code, H.264, adaptive bitrate |
+| Files and packages | Shared Android storage, XDG user directories, `.deb` installer, APT launcher refresh |
+| Audio | PulseAudio → FIFO → Android `AudioTrack` speaker output |
+| Mobile input | Touchpad, direct touch, pointer capture, external keyboard/mouse, clipboard, PiP |
+| Reliability | First-frame detection, Surface keepalive, process watchdog, foreground services |
 
-## Local Agent
+## Compatibility hooks and bridges
 
-The LinuxHub Agent service exposes the Linux desktop and Android system capabilities as a structured local tool surface. Any Agent that can send HTTP requests with custom headers can integrate after the user grants access.
+| Layer | Purpose |
+| --- | --- |
+| PRoot syscall hooks | `ptrace` / `seccomp` interception, path translation, fake root, UID/GID compatibility |
+| `fake_id0` | Correct root-like file operations inside a user-space container |
+| ashmem → memfd | Shader shared-memory compatibility between Android and Ubuntu |
+| `getifaddrs` hook | `LD_PRELOAD` interception that exposes Android IPv4 / IPv6 interfaces to Ubuntu |
+| Rust getifaddrs bridge | Private Unix socket and framed `TIF1` protocol between Android helper and glibc client |
+| GNOME resource overlay | Aligns GNOME 46 startup, session mode, and first-frame visibility |
+| DING compatibility | Desktop icons, file drag-and-drop, and clipboard integration |
+| X11 Present / VBlank | Buffer submission, Damage tracking, GPU-copy completion, and artifact fixes |
+| MediaCodec Surface | Xlorie renders directly into the Android hardware H.264 encoder input |
+| Application wrapper | Every desktop application goes through `doro-gpu-run` for GPU selection and fallback |
+| PulseAudio FIFO bridge | Ubuntu audio reaches Android through an isolated FIFO sink |
+| JNI / Rust sessiond | Session control, environment validation, helper orchestration, and restart policy |
 
-### Connection
+## Download, networking, and package installation
 
-```text
-Endpoint:      http://127.0.0.1:38473
-Authorization: Bearer <token copied from LinuxHub settings>
-```
+| Stage | Implementation |
+| --- | --- |
+| Browser | Chrome handles `http`, `https`, HTML, and common web formats |
+| DNS / hosts | Repairs localhost, hostname, and container name resolution |
+| HTTPS | Installs `openssl` and `ca-certificates` offline and rebuilds the trust store |
+| Android storage | Binds `/storage/emulated/0` into the container; `/sdcard/Download` stays accessible |
+| Linux downloads | Creates `~/Downloads`, GTK bookmarks, and localized XDG directories |
+| APT | Pins the Ubuntu 24.04 `noble` repositories |
+| `.deb` files | Opens through the LinuxHub package installer with ARM64 checks and APT installation |
+| Post-install | APT `Post-Invoke` refreshes desktop entries, MIME associations, and GPU launch wrappers |
+| App migration | Content-addressed markers update vendor apps after an APK overwrite upgrade |
+| Terminal banner | `doro-fetch` renders a narrow-screen Ubuntu dashboard with a text fallback |
 
-> [!IMPORTANT]
-> The Agent service binds only to `127.0.0.1`. Its token is generated locally and must only be shared with trusted Agents. Never publish it in screenshots, logs, or remote configuration.
+## Dual-vendor GPU
 
-### HTTP endpoints
-
-| Method | Path | Purpose |
+| Platform | Application renderer | Notes |
 | --- | --- | --- |
-| `GET` | `/v1/health` | Query Agent and runtime health |
-| `GET` | `/v1/tools` | Retrieve the current tool catalog and parameter definitions |
-| `POST` | `/v1/tools/call` | Invoke one structured tool |
-| `POST` | `/v1/cli/exec` | Execute a container command through the Agent |
+| Qualcomm Adreno | Mesa Zink + Turnip | GNOME Shell stays on llvmpipe; applications use Adreno independently |
+| MediaTek Mali | virpipe + VirGL | The Android-side VirGL server provides hardware rendering to Ubuntu |
+| GPU failure | llvmpipe | Automatic fallback prevents black screens |
+| GTK4 on Qualcomm | Cairo | Avoids corrupted tabs and damaged regions on affected Adreno Zink paths |
 
-### Quick verification
+Mesa 27 fixes incorrect AArch64 CPU feature detection that caused SVE `SIGILL`, first-frame timeout, and failure to enter GNOME on affected Qualcomm devices.
 
-```bash
-export LINUXHUB_TOKEN='<token copied from settings>'
+## USB / LAN remote desktop
 
-curl -sS http://127.0.0.1:38473/v1/health \
-  -H "Authorization: Bearer ${LINUXHUB_TOKEN}"
+- USB access through ADB port forwarding and a browser
+- LAN access through the phone's automatically detected HTTPS address
+- Six-digit pairing code
+- X11 rendered directly into a MediaCodec Surface and encoded as H.264
+- Browser decoding through WebCodecs
+- Keyboard, mouse, touch, and wheel input
+- Latency-aware bitrate control, keyframe requests, stale-frame dropping, and optional input dropping
 
-curl -sS http://127.0.0.1:38473/v1/tools \
-  -H "Authorization: Bearer ${LINUXHUB_TOKEN}"
-```
+## Initialization and upgrades
 
-Invoke a window tool:
+- Guided permissions, GPU route, Linux username, and password setup
+- Per-task progress, failure, timeout, and diagnostic messages
+- Total timeout and no-output process watchdog
+- APK overwrite upgrades preserve the rootfs, user directories, and configuration
+- New APKs automatically reconcile GNOME, Mesa, and vendor applications
+- Content markers avoid repeated full validation on every desktop start
+- Symlink, hardlink, SUID/SGID, and merged `/usr` repairs
+- At least 5 GB of free storage is recommended for the first initialization
 
-```bash
-curl -sS http://127.0.0.1:38473/v1/tools/call \
-  -H "Authorization: Bearer ${LINUXHUB_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"tool":"desktop.windows","arguments":{}}'
-```
+## Android control center
 
-### Command line inside the container
-
-The Ubuntu environment provides `/usr/local/bin/lotusctl`:
-
-```bash
-lotusctl health
-lotusctl exec 'uname -a'
-lotusctl desktop-start
-lotusctl screenshot /tmp/desktop.png
-lotusctl call '{"tool":"desktop.windows","arguments":{}}'
-```
-
-## Agent tool matrix
-
-### Terminal and system
-
-| Tool domain | Representative capability |
-| --- | --- |
-| `terminal` | Execute commands and return stdout, stderr, exit code, timing, and truncation state |
-| `system` | Query application, Android, ABI, container, and runtime information |
-| `batch` | Execute desktop actions in order and report per-action results and the first failure |
-
-### Linux desktop
-
-| Tool domain | Representative capability |
-| --- | --- |
-| `desktop` | Start, stop, and inspect X11/XFCE sessions and display size |
-| `desktop.apps` | Enumerate `.desktop` applications and launch by application ID |
-| `desktop.windows` | Query title, `WM_CLASS`, PID, geometry, focus, and window state |
-| `desktop.activate` | Activate by `windowId`, title, `WM_CLASS`, or PID |
-| `desktop.close` | Request a polite close and verify that the target window disappears |
-| `desktop.screenshot` | Capture the full desktop or a selected window with relative crops |
-| `desktop.mouse` | Move, click, double-click, drag, scroll, and hold buttons |
-| `desktop.key` | Send keys, shortcuts, and function keys |
-| `desktop.text` | Enter UTF-8 text into the current X11 focus |
-| `desktop.clipboard` | Read, write, and clear the X11 clipboard |
-| `desktop.open` | Open an absolute path or URL |
-| `desktop.search` | Search with the user's current browser default engine |
-
-### Android
-
-| Tool domain | Representative capability |
-| --- | --- |
-| `android.shell` | Execute Android commands with the Shizuku shell identity |
-| `android.screenshot` | Capture the Android screen |
-| `android.input` | Send Android-level input events |
-| `android.file` | Transfer files between Android and the Linux workspace |
-| `android.apk` | Install or remove APKs |
-| `android.browser` | Query or change the system default browser role |
-
-## Semantic graphical automation
-
-LinuxHub encourages Agents to use semantic selectors and real state verification instead of relying entirely on full-screen screenshots and coordinate guessing.
-
-```mermaid
-flowchart LR
-    A[Discover applications and windows] --> B[Wait for the target]
-    B --> C[Activate a unique semantic match]
-    C --> D[Keyboard / text / window-relative action]
-    D --> E[Verify with a screenshot or state query]
-    E --> F[Polite close and disappearance check]
-```
-
-Window selectors support:
-
-- `windowId`
-- Window title
-- `WM_CLASS`
-- Process PID
-
-If a selector matches more than one window, the API returns the candidates instead of silently choosing an incorrect target.
-
-## Chinese desktop experience
-
-LinuxHub treats Chinese as part of the default desktop:
-
-| Layer | Implementation |
-| --- | --- |
-| Locale | Generates `zh_CN.UTF-8` by default |
-| Fonts | Includes Noto CJK for the desktop, terminal, and applications |
-| Input method | Includes Fcitx5 and Chinese candidate input components |
-| Desktop translation | Preserves Simplified Chinese translations for XFCE Terminal, Thunar, the panel, window manager, and settings |
-| Application names | Chinese names and descriptions for desktop menus and built-in applications |
-| Terminal input | Chinese rendering, composed text, candidate selection, Backspace, Delete, and arrow keys |
-| Agent input | `desktop.text` submits UTF-8 directly to graphical applications |
-| Focus isolation | Agent input and the ordinary Android soft keyboard use independent paths without stealing user focus |
-
-## Touch and external input
-
-| Action | Behavior |
-| --- | --- |
-| One-finger movement | Move the Linux pointer |
-| One-finger tap | Primary click |
-| One-finger long press | Complete right-button press and release |
-| Long press then move | Drag a window or content |
-| Two-finger movement | Horizontal or vertical scrolling |
-| Android soft keyboard | Submit keys and text to the current Linux focus |
-| External mouse | Relative movement, buttons, and wheel |
-| External keyboard | Shortcuts, function keys, arrows, and editing keys |
-
-The desktop uses a default `1280×800` 16:10 canvas with mobile-oriented fitting and no forced interface stretching. First-run initialization installs the default wallpaper, GTK theme, and icon theme while preserving later user changes.
+- Live Ubuntu version, user, device, architecture, and GPU route
+- Memory, storage, network, desktop resolution, and uptime
+- Direct access to Terminal, GNOME Desktop, USB Remote, LAN Remote, and About
+- Liquid-glass cards, local glass toolbars, and a transparent LinuxHub mark
+- Foreground desktop notification with force-stop action
+- Picture-in-picture, fullscreen, orientation, cutout, and keep-awake controls
+- Android user activity refreshed every 120 seconds to prevent sleep during downloads or builds
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    User[Android user] --> App[LinuxHub Android app]
+    Android[Android control center / input / audio / storage]
+    Surface[Lorie X11 Surface]
+    PRoot[PRoot + seccomp / ptrace hooks]
+    Ubuntu[Ubuntu 24.04.4 ARM64]
+    GNOME[GNOME Shell 46 / Mutter 46 X11]
+    Apps[Linux applications / Chrome / LibreOffice]
+    GPU[Adreno Zink/Turnip or Mali VirGL]
+    Remote[USB / LAN H.264 remote server]
 
-    App --> Terminal[Terminal workspace]
-    App --> Surface[X11 surface]
-    App --> Runtime[Runtime manager]
-
-    Runtime --> PRoot[PRoot runtime]
-    PRoot --> Ubuntu[Ubuntu 24.04 ARM64]
-    Ubuntu --> XFCE[XFCE desktop]
-    Ubuntu --> Audio[D-Bus / PulseAudio]
-    XFCE --> Surface
-    Terminal --> Ubuntu
-
-    Agent[Trusted Agent] -->|127.0.0.1 + Bearer token| API[LinuxHub local REST API]
-    API --> Terminal
-    API --> XFCE
-    API --> Bridge[Shizuku Android bridge]
-    Bridge --> Android[Android system capabilities]
+    Android --> Surface
+    Android --> PRoot
+    PRoot --> Ubuntu
+    Ubuntu --> GNOME
+    Ubuntu --> Apps
+    Apps --> GPU
+    GNOME --> Surface
+    Surface --> Remote
+    Remote --> Browser[Desktop browser + WebCodecs]
 ```
 
-### Runtime components
+## Quick start
 
-| Layer | Components |
+1. Download the ARM64 APK from [Releases](https://github.com/xishanp/Linuxhub/releases).
+2. Grant file access, notification, and battery optimization permissions.
+3. Select the Qualcomm Adreno or MediaTek Mali GPU route.
+4. Create the Ubuntu username and password.
+5. Keep LinuxHub in the foreground while the offline initialization completes.
+6. Open GNOME Desktop or Terminal from the home page.
+
+## Compatibility
+
+| Item | Requirement |
 | --- | --- |
-| Android application | Kotlin, Jetpack Compose, terminal UI, X11 surface, runtime management |
-| Linux userspace | Ubuntu 24.04 ARM64, PRoot, user and environment setup |
-| Desktop | XFCE, X11, window manager, GTK, icon themes, and desktop components |
-| Display path | Embedded X11 runtime based on the Termux:X11 / Lorie display stack |
-| Audio and desktop services | D-Bus, PulseAudio, and the Android audio bridge |
-| Android privileged bridge | Shizuku shell identity, invoked on demand |
-| Agent | Local HTTP service, tool catalog, Bearer authentication, and structured dispatch |
-
-## Getting started
-
-### Requirements
-
-- Android 8.0 or newer
-- ARM64 Android device
-- Sufficient free storage
-- Shizuku installed and authorized when Android system-level tools are needed
-
-### Launch LinuxHub
-
-1. Install the LinuxHub APK.
-2. Create a Linux user on first launch.
-3. Keep LinuxHub in the foreground while Ubuntu is deployed.
-4. Open the terminal or start the XFCE desktop from the home screen.
-5. Enable the local Agent in Settings and copy its Endpoint and Token.
-6. Provide the connection details to a trusted Agent, or verify locally with `lotusctl`.
-
-> [!NOTE]
-> First deployment expands the RootFS and initializes the desktop. Reserve enough storage and keep the application in the foreground during deployment.
-
-### Shizuku
-
-Shizuku provides a user-authorized shell/ADB identity:
-
-- No Root required
-- No external ADB server required
-- Linux terminal, desktop, and X11 tools remain available when Shizuku is disabled
-- Only the `android.*` tool domains depend on Shizuku
-
-## Build from source
-
-Requirements:
-
-- JDK 17
-- Android SDK
-- Android NDK
-
-```bash
-./gradlew :app:testDebugUnitTest --no-daemon
-./gradlew :app:assembleDebug --no-daemon
-```
-
-APK output:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Repository layout
-
-```text
-LinuxHub/
-├── app/                      Android app, terminal, X11, and Linux runtime
-├── assets/                   README and project presentation assets
-├── termux_ubuntu_rebuild/    Ubuntu and Termux:X11 build resources
-├── tools/                    Offline desktop themes, dependencies, and utilities
-├── ARCHITECTURE.md           Technical architecture
-├── OFFLINE_ASSETS.md         Offline asset notes
-├── SECURITY.md               Security policy
-└── CHANGELOG.md              Changelog
-```
-
-## Security model
-
-LinuxHub treats the local Agent as a privileged automation surface and defines its boundaries accordingly.
-
-- The API listens only on `127.0.0.1` and is not exposed to the LAN.
-- Every tool call requires a Bearer token.
-- Tokens are excluded from health responses and runtime logs.
-- `android.shell` inherits the Shizuku shell identity and must only be exposed to trusted Agents.
-- PRoot is a userspace environment, not a hardware security sandbox for hostile code.
-- Linux programs may access Android paths explicitly bind-mounted into the container. Run trusted software only.
-- Never provide the token to an untrusted Agent or include tokens, logs, or device-private data in a public issue.
-
-Report security issues privately through GitHub Security Advisories. See [SECURITY.md](SECURITY.md).
-
-## Compatibility and boundaries
-
-| Item | Details |
-| --- | --- |
-| Android | API 26 and newer |
+| Android | API 28 / Android 9 or newer |
 | CPU | ARM64 |
 | Root | Not required |
-| Shizuku | Optional; required only for Android system-level tools |
-| Desktop | XFCE / X11 |
-| Graphics | Depends on the device, Android kernel, Mesa, and graphics drivers |
-| Agent | Local HTTP/REST with no LAN listener |
-| Data location | The Linux environment is stored in the application's private data directory |
+| Desktop | Official GNOME Shell 46 / Mutter 46 X11 |
+| GPU | Adreno or Mali with automatic llvmpipe fallback |
+| Remote desktop | USB or the same LAN |
+| Browser | Chrome / Edge 109+ with WebCodecs support |
+| Storage | App-private rootfs plus Android shared-storage bindings |
 
-## Contributing
+## Current boundaries
 
-- Remove tokens, usernames, file paths, and device-private data before submitting a bug report.
-- When changing the runtime, input, display, or Android bridge, verify both the terminal and graphical desktop.
-- Documentation, translations, compatibility testing, and reproductions are equally valuable.
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting code.
+- Browser hardware video encoding is deferred to the next release.
+- A production Chrome Wayland launch path is deferred to the next release.
+- AAC / MP4 packaging is deferred to the next release.
+- The Canvas 2D left-edge artifact under Wayland / Zink remains unresolved.
 
 ## License
 
 LinuxHub is released under the [GNU General Public License v3.0](LICENSE).
 
-Ubuntu, XFCE, Termux, Termux:X11, PRoot, Shizuku, Mesa, PulseAudio, and other components remain subject to their own licenses and copyright notices. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details.
+Ubuntu, GNOME, Mutter, PRoot, Termux:X11, Lorie, Mesa, PulseAudio, and other components retain their original licenses and copyright notices. See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
 
 ---
 
 <p align="center">
-  <strong>LinuxHub</strong><br>
-  <sub>A Linux desktop on Android — and a local computer that Agents can operate.</sub>
+  <strong>LinuxHub · Myth-Prometheus</strong><br>
+  <sub>A complete Ubuntu GNOME desktop on Android.</sub>
 </p>
