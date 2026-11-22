@@ -257,7 +257,7 @@ This release connects the complete path from browser download to locating, openi
 - APK size: approximately 990 MB
 - Distribution: GitHub Releases, not Google Play
 
-Current release file: `LinuxHub-Myth-Prometheus-groups.apk`
+Current release file: `LinuxHub-Myth-Prometheus.apk`
 
 ```text
 SHA-256: 0aa2d258510b19ce2b909863db9edeabfe10ad2a34314cd21a8d2c45c3cefea2

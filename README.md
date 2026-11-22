@@ -257,7 +257,7 @@ LinuxHub 不是简单启动一个终端或套一层仿桌面。Android 与 glibc
 - 安装包约 990 MB
 - 通过 GitHub Releases 直接分发，不上 Google Play
 
-当前发布文件：`LinuxHub-Myth-Prometheus-groups.apk`
+当前发布文件：`LinuxHub-Myth-Prometheus.apk`
 
 ```text
 SHA-256: 0aa2d258510b19ce2b909863db9edeabfe10ad2a34314cd21a8d2c45c3cefea2
