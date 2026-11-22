@@ -23,3 +23,9 @@
   - the app dex contains the `/proc/self/status` group-name repair.
 - Keep the validated fallback library for emergency research only. It is not a
   release artifact.
+
+## Cross-session memory
+
+- Read `MEMORY.md` before touching release flow or the desktop stack.
+- It holds the current published SHA-256, the mandatory build/verify checklist,
+  and the pending backlog (kgsl A/B, dma-buf passthrough, input, audio, Wayland).
