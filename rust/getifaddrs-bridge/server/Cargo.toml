@@ -1,0 +1,14 @@
+[package]
+name = "linuxhub-getifaddrs-server"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[[bin]]
+name = "getifaddrs_bridge_server"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+linuxhub-getifaddrs-protocol = { path = "../protocol" }

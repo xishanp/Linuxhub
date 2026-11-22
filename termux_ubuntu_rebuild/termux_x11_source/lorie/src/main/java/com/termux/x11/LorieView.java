@@ -12,6 +12,7 @@ import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Bitmap;
 import android.graphics.drawable.ColorDrawable;
 import android.opengl.GLES20;
 import android.os.Build;
@@ -334,6 +335,8 @@ class InputConnectionWrapper implements InputConnection {
 @Keep @SuppressLint("WrongConstant")
 @SuppressWarnings("deprecation")
 public class LorieView extends SurfaceView implements InputStub {
+    private static final String VIEWPORT_TAG = "LorieViewport";
+    private static final long VIEWPORT_SETTLE_MS = 220L;
     private static int rendererZoom = 100;
 
     public interface Callback {
@@ -363,6 +366,26 @@ public class LorieView extends SurfaceView implements InputStub {
     private final Matrix inputTransform = new Matrix();
     private float inputSourceLeft = 0.f, inputSourceTop = 0.f;
     private float inputSourceWidth = 0.f, inputSourceHeight = 0.f;
+    private int lastLoggedSurfaceWidth = -1, lastLoggedSurfaceHeight = -1;
+    private int lastLoggedExpectedWidth = -1, lastLoggedExpectedHeight = -1;
+    private int runtimeSurfaceWidth = 0, runtimeSurfaceHeight = 0;
+    private int lastAppliedViewportLeft = -1, lastAppliedViewportTop = -1;
+    private int lastAppliedViewportWidth = -1, lastAppliedViewportHeight = -1;
+    private int lastCommittedWindowWidth = -1, lastCommittedWindowHeight = -1;
+    private int viewportRequestSequence = 0;
+    private int scheduledViewportRequest = -1;
+    private String pendingViewportReason = "unspecified";
+    private boolean surfaceReady = false;
+    private boolean externalRuntimeSurface = false;
+    private boolean windowVisible = true;
+    private boolean dimensionsFrozen = false;
+    private boolean forceRedrawOnApply = false;
+    private final Runnable applyViewportRunnable = new Runnable() {
+        @Override public void run() {
+            scheduledViewportRequest = -1;
+            applyViewportAfterSettle(pendingViewportReason);
+        }
+    };
     boolean commitedText = false;
     private final InputConnection mConnection = new InputConnectionWrapper(new BaseInputConnection(this, false) {
         private final MainActivity a = MainActivity.getInstance();
@@ -573,23 +596,33 @@ public class LorieView extends SurfaceView implements InputStub {
     private final SurfaceHolder.Callback mSurfaceCallback = new SurfaceHolder.Callback() {
         @Override public void surfaceCreated(@NonNull SurfaceHolder holder) {
             holder.setFormat(PixelFormat.BGRA_8888);
+            externalRuntimeSurface = false;
+            surfaceReady = true;
         }
 
         @Override public void surfaceChanged(@NonNull SurfaceHolder holder, int f, int width, int height) {
+            externalRuntimeSurface = false;
+            surfaceReady = true;
+            runtimeSurfaceWidth = Math.max(0, width);
+            runtimeSurfaceHeight = Math.max(0, height);
+            Log.i(VIEWPORT_TAG, "Surface callback buffer=" + width + "x" + height +
+                    " measured=" + getMeasuredWidth() + "x" + getMeasuredHeight() +
+                    " visible=" + windowVisible);
             if (surfaceLifecycleListener != null)
                 surfaceLifecycleListener.onSurfaceAvailable(holder.getSurface(), width, height);
             else
-                LorieView.this.surfaceChanged(holder.getSurface());
-            width = getMeasuredWidth();
-            height = getMeasuredHeight();
-
-            Log.d("SurfaceChangedListener", "Surface was changed: " + width + "x" + height);
-            updateViewport();
+                attachSurfaceToRenderer(holder.getSurface(), width, height);
+            requestRedraw("surfaceChanged");
         }
 
         @Override public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+            surfaceReady = false;
+            removeCallbacks(applyViewportRunnable);
+            scheduledViewportRequest = -1;
+            Log.i(VIEWPORT_TAG, "Surface destroyed; keeping last committed X11 size=" +
+                    lastCommittedWindowWidth + "x" + lastCommittedWindowHeight);
             if (surfaceLifecycleListener != null) surfaceLifecycleListener.onSurfaceDestroyed();
-            else LorieView.this.surfaceChanged(null);
+            else attachSurfaceToRenderer(null, 0, 0);
         }
     };
 
@@ -626,13 +659,120 @@ public class LorieView extends SurfaceView implements InputStub {
         surfaceLifecycleListener = listener;
     }
 
+    public void setWindowVisible(boolean visible) {
+        if (windowVisible == visible) return;
+        windowVisible = visible;
+        if (!visible) {
+            removeCallbacks(applyViewportRunnable);
+            scheduledViewportRequest = -1;
+            Log.i(VIEWPORT_TAG, "Viewport commits paused while window is hidden");
+        } else {
+            requestRedraw("windowVisible");
+        }
+    }
+
+    public void notifyWindowMetricsChanged(String reason) {
+        scheduleViewportUpdate(reason);
+    }
+
+    public void requestRedraw(String reason) {
+        forceRedrawOnApply = true;
+        scheduleViewportUpdate(reason);
+    }
+
+    public void freezeDimensions(boolean freeze) {
+        if (dimensionsFrozen == freeze) return;
+        dimensionsFrozen = freeze;
+        if (freeze) {
+            if (lastCommittedWindowWidth > 0 && lastCommittedWindowHeight > 0)
+                p.set(lastCommittedWindowWidth, lastCommittedWindowHeight);
+            Log.i(VIEWPORT_TAG, "Froze X11 dimensions at " + p.x + "x" + p.y);
+        } else {
+            Log.i(VIEWPORT_TAG, "Unfroze X11 dimensions; waiting for final window metrics");
+            requestLayout();
+        }
+        scheduleViewportUpdate(freeze ? "dimensionsFrozen" : "dimensionsUnfrozen");
+    }
+
+    public void updateRuntimeSurfaceSize(int width, int height) {
+        if (width > 0) runtimeSurfaceWidth = width;
+        if (height > 0) runtimeSurfaceHeight = height;
+        scheduleViewportUpdate("runtimeResize");
+    }
+
+    public void resetWindowChangeCommit() {
+        lastCommittedWindowWidth = -1;
+        lastCommittedWindowHeight = -1;
+    }
+
     public void attachRuntimeSurface(Surface surface, int width, int height) {
-        surfaceChanged(surface);
-        updateViewport();
+        attachRuntimeSurface(surface, width, height, width, height);
+    }
+
+    /**
+     * Attaches an external producer Surface (for example MediaCodec's input
+     * Surface) and pins the renderer's logical frame size independently from
+     * the SurfaceView dimensions.
+     */
+    public void attachRuntimeSurface(Surface surface, int width, int height,
+                                     int expectedWidth, int expectedHeight) {
+        externalRuntimeSurface = true;
+        surfaceReady = true;
+        runtimeSurfaceWidth = Math.max(0, width);
+        runtimeSurfaceHeight = Math.max(0, height);
+        if (expectedWidth > 0 && expectedHeight > 0) {
+            lastCommittedWindowWidth = expectedWidth;
+            lastCommittedWindowHeight = expectedHeight;
+        }
+        attachSurfaceToRenderer(surface, width, height);
+
+        // A runtime Surface belongs to a programmatically created headless view
+        // that is intentionally not attached to an Android window. Set the
+        // renderer viewport synchronously so MediaCodec never receives the
+        // cleared, zero-sized pre-commit buffer.
+        int viewportWidth = Math.max(1, width);
+        int viewportHeight = Math.max(1, height);
+        int sourceWidth = expectedWidth > 0 ? expectedWidth : viewportWidth;
+        int sourceHeight = expectedHeight > 0 ? expectedHeight : viewportHeight;
+        viewport.set(0, 0, viewportWidth, viewportHeight);
+        inputViewport.set(viewport);
+        inputSourceLeft = inputSourceTop = 0.f;
+        inputSourceWidth = sourceWidth;
+        inputSourceHeight = sourceHeight;
+        setViewport(0, 0, viewportWidth, viewportHeight, sourceWidth, sourceHeight);
+        updateInputTransform();
+        lastAppliedViewportLeft = viewport.left;
+        lastAppliedViewportTop = viewport.top;
+        lastAppliedViewportWidth = viewport.width();
+        lastAppliedViewportHeight = viewport.height();
+        forceRedrawOnApply = true;
+        Log.i(VIEWPORT_TAG, "Committed runtime viewport=" + viewportWidth + "x" + viewportHeight +
+                " source=" + sourceWidth + "x" + sourceHeight);
+        requestRedraw("attachRuntimeSurface");
+    }
+
+    private void attachSurfaceToRenderer(Surface surface, int surfaceWidth, int surfaceHeight) {
+        if (surface == null) {
+            surfaceChanged(null, 0, 0);
+            return;
+        }
+        int expectedWidth = lastCommittedWindowWidth > 0 ? lastCommittedWindowWidth : p.x;
+        int expectedHeight = lastCommittedWindowHeight > 0 ? lastCommittedWindowHeight : p.y;
+        if (expectedWidth <= 0 || expectedHeight <= 0) {
+            expectedWidth = surfaceWidth;
+            expectedHeight = surfaceHeight;
+        }
+        Log.i(VIEWPORT_TAG, "Surface attach expected=" + expectedWidth + "x" + expectedHeight +
+                " surface=" + surfaceWidth + "x" + surfaceHeight);
+        surfaceChanged(surface, expectedWidth, expectedHeight);
     }
 
     public void detachRuntimeSurface() {
-        surfaceChanged(null);
+        externalRuntimeSurface = false;
+        surfaceReady = false;
+        removeCallbacks(applyViewportRunnable);
+        scheduledViewportRequest = -1;
+        attachSurfaceToRenderer(null, 0, 0);
     }
 
     public void applyPreferences() {
@@ -643,7 +783,7 @@ public class LorieView extends SurfaceView implements InputStub {
 
     public void triggerCallback() {
         requestFocus();
-        updateViewport();
+        scheduleViewportUpdate("triggerCallback");
     }
 
     void getDimensionsFromSettings(int width, int height) {
@@ -694,22 +834,31 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     private void updateInputTransform() {
+        Matrix transform = getInputTransform();
+        Log.i(VIEWPORT_TAG, "Input transform viewport=" + inputViewport.left + "," + inputViewport.top +
+                " " + inputViewport.width() + "x" + inputViewport.height() +
+                " source=" + inputSourceLeft + "," + inputSourceTop + " " +
+                inputSourceWidth + "x" + inputSourceHeight +
+                " expected=" + p.x + "x" + p.y);
         if (mCallback != null)
-            mCallback.inputTransformChanged(p.x, p.y, getInputTransform());
+            mCallback.inputTransformChanged(p.x, p.y, transform);
     }
 
-    private void sendWindowChange() {
-        String name;
-        int framerate = (int) (getDisplay() != null ? getDisplay().getRefreshRate() : 30);
-
+    private String currentDisplayName() {
         if (getDisplay() == null || getDisplay().getDisplayId() == Display.DEFAULT_DISPLAY)
-            name = "builtin";
-        else if (SamsungDexUtils.checkDeXEnabled(getContext()))
-            name = "dex";
-        else
-            name = "external";
+            return "builtin";
+        if (SamsungDexUtils.checkDeXEnabled(getContext()))
+            return "dex";
+        return "external";
+    }
 
-        sendWindowChange(p.x, p.y, framerate, name);
+    private void sendWindowChange(int width, int height, String reason, int requestSequence) {
+        String name = currentDisplayName();
+        int framerate = (int) (getDisplay() != null ? getDisplay().getRefreshRate() : 30);
+        Log.i(VIEWPORT_TAG, "sendWindowChange expected=" + width + "x" + height +
+                " framerate=" + framerate + " display=" + name +
+                " reason=" + reason + " seq=" + requestSequence);
+        sendWindowChange(width, height, framerate, name);
     }
 
     @Keep
@@ -735,27 +884,56 @@ public class LorieView extends SurfaceView implements InputStub {
             return;
 
         contentInsets.set(left, top, right, bottom);
-        updateViewport();
+        scheduleViewportUpdate("contentInsets");
     }
 
-    private void updateViewport() {
+    private boolean canCommitViewport() {
+        return surfaceReady && windowVisible &&
+                (externalRuntimeSurface || (isAttachedToWindow() && getHolder().getSurface().isValid()));
+    }
+
+    private void scheduleViewportUpdate(String reason) {
+        pendingViewportReason = reason;
+        viewportRequestSequence++;
+        final int requestSequence = viewportRequestSequence;
+        if (!canCommitViewport()) {
+            Log.d(VIEWPORT_TAG, "Deferring viewport update reason=" + reason +
+                    " seq=" + requestSequence + " surfaceReady=" + surfaceReady +
+                    " visible=" + windowVisible + " attached=" + isAttachedToWindow());
+            return;
+        }
+        removeCallbacks(applyViewportRunnable);
+        scheduledViewportRequest = requestSequence;
+        Log.d(VIEWPORT_TAG, "Scheduling viewport update reason=" + reason +
+                " seq=" + requestSequence + " delay=" + VIEWPORT_SETTLE_MS + "ms");
+        postDelayed(applyViewportRunnable, VIEWPORT_SETTLE_MS);
+    }
+
+    private void applyViewportAfterSettle(String reason) {
+        int requestSequence = viewportRequestSequence;
+        if (!canCommitViewport()) {
+            Log.i(VIEWPORT_TAG, "Skipping stale viewport commit reason=" + reason +
+                    " seq=" + requestSequence + " surfaceReady=" + surfaceReady +
+                    " visible=" + windowVisible + " attached=" + isAttachedToWindow());
+            return;
+        }
+
         Prefs prefs = InputPreferencesRegistry.get();
         if (prefs == null) return;
 
-        int surfaceW = getMeasuredWidth(), surfaceH = getMeasuredHeight();
+        int surfaceW = runtimeSurfaceWidth > 0 ? runtimeSurfaceWidth : getMeasuredWidth();
+        int surfaceH = runtimeSurfaceHeight > 0 ? runtimeSurfaceHeight : getMeasuredHeight();
         int availableLeft = contentInsets.left, availableTop = contentInsets.top;
         int availableW = Math.max(0, surfaceW - contentInsets.left - contentInsets.right);
         int availableH = Math.max(0, surfaceH - contentInsets.top - contentInsets.bottom);
+        if (availableW == 0 || availableH == 0) return;
 
-        if (availableW == 0 || availableH == 0)
-            return;
-
-        getDimensionsFromSettings(availableW, availableH);
+        if (!dimensionsFrozen)
+            getDimensionsFromSettings(availableW, availableH);
 
         int drawW = availableW;
         int drawH = availableH;
-
-        if (!prefs.displayStretch.get()) {
+        if (dimensionsFrozen || !prefs.displayStretch.get()) {
             if (drawW > drawH * p.x / p.y)
                 drawW = drawH * p.x / p.y;
             else
@@ -764,24 +942,67 @@ public class LorieView extends SurfaceView implements InputStub {
 
         int left = availableLeft + (availableW - drawW) / 2;
         int top = availableTop + (availableH - drawH) / 2;
-
         viewport.set(left, top, left + drawW, top + drawH);
-        if (rendererZoom == 100 || inputSourceWidth == 0.f || inputSourceHeight == 0.f) {
-            inputViewport.set(viewport);
-            inputSourceLeft = inputSourceTop = 0.f;
-            inputSourceWidth = p.x;
-            inputSourceHeight = p.y;
-        }
-        setViewport(viewport.left, viewport.top, viewport.width(), viewport.height(), p.x, p.y);
 
-        updateInputTransform();
-        sendWindowChange();
+        if (surfaceW != lastLoggedSurfaceWidth || surfaceH != lastLoggedSurfaceHeight ||
+                p.x != lastLoggedExpectedWidth || p.y != lastLoggedExpectedHeight) {
+            Log.i(VIEWPORT_TAG, "applyViewport surface=" + surfaceW + "x" + surfaceH +
+                    " available=" + availableW + "x" + availableH +
+                    " expected=" + p.x + "x" + p.y +
+                    " draw=" + drawW + "x" + drawH +
+                    " stretch=" + prefs.displayStretch.get() +
+                    " reason=" + reason + " seq=" + requestSequence);
+            lastLoggedSurfaceWidth = surfaceW;
+            lastLoggedSurfaceHeight = surfaceH;
+            lastLoggedExpectedWidth = p.x;
+            lastLoggedExpectedHeight = p.y;
+        }
+
+        boolean viewportChanged = viewport.left != lastAppliedViewportLeft ||
+                viewport.top != lastAppliedViewportTop ||
+                viewport.width() != lastAppliedViewportWidth ||
+                viewport.height() != lastAppliedViewportHeight ||
+                p.x != lastCommittedWindowWidth || p.y != lastCommittedWindowHeight;
+        boolean forcedRedraw = forceRedrawOnApply;
+        if (viewportChanged || forcedRedraw) {
+            if (rendererZoom == 100 || inputSourceWidth == 0.f || inputSourceHeight == 0.f) {
+                inputViewport.set(viewport);
+                inputSourceLeft = inputSourceTop = 0.f;
+                inputSourceWidth = p.x;
+                inputSourceHeight = p.y;
+            }
+            if (forcedRedraw && !viewportChanged) {
+                Log.i(VIEWPORT_TAG, "Forcing renderer redraw viewport=" + viewport.left + "," + viewport.top +
+                        " " + viewport.width() + "x" + viewport.height() +
+                        " expected=" + p.x + "x" + p.y +
+                        " reason=" + reason + " seq=" + requestSequence);
+            }
+            setViewport(viewport.left, viewport.top, viewport.width(), viewport.height(), p.x, p.y);
+            updateInputTransform();
+            lastAppliedViewportLeft = viewport.left;
+            lastAppliedViewportTop = viewport.top;
+            lastAppliedViewportWidth = viewport.width();
+            lastAppliedViewportHeight = viewport.height();
+            forceRedrawOnApply = false;
+        }
+
+        if (dimensionsFrozen) {
+            Log.d(VIEWPORT_TAG, "X11 root resize held while window is floating expected=" +
+                    p.x + "x" + p.y + " reason=" + reason + " seq=" + requestSequence);
+        } else if (p.x != lastCommittedWindowWidth || p.y != lastCommittedWindowHeight) {
+            lastCommittedWindowWidth = p.x;
+            lastCommittedWindowHeight = p.y;
+            sendWindowChange(p.x, p.y, reason, requestSequence);
+        } else {
+            Log.d(VIEWPORT_TAG, "Viewport unchanged; X11 root resize suppressed expected=" +
+                    p.x + "x" + p.y + " reason=" + reason + " seq=" + requestSequence);
+        }
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        updateViewport();
+        scheduleViewportUpdate("onMeasure");
     }
 
     @Override
@@ -938,7 +1159,7 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     @FastNative private native void nativeInit();
-    @FastNative private native void surfaceChanged(Surface surface);
+    @FastNative private native void surfaceChanged(Surface surface, int expectedWidth, int expectedHeight);
     @FastNative private native void setFiltering(int filtering);
     @FastNative public static native void connect(int fd);
     @CriticalNative public static native boolean connected();
@@ -946,9 +1167,18 @@ public class LorieView extends SurfaceView implements InputStub {
     @FastNative static native void setClipboardSyncEnabled(boolean enabled, boolean ignored);
     @FastNative public native void sendClipboardAnnounce();
     @FastNative public native void sendClipboardEvent(byte[] text);
-    @FastNative static native void sendWindowChange(int width, int height, int framerate, String name);
+    @FastNative public static native void sendWindowChange(int width, int height, int framerate, String name);
+    @FastNative public static native void setContinuousFrames(boolean enabled);
     @FastNative static native void setViewport(int x, int y, int width, int height, int expectedWidth, int expectedHeight);
     @FastNative private static native void setRendererZoom(int percent);
+    @FastNative public static native int captureFrameWidth();
+    @FastNative public static native int captureFrameHeight();
+    @FastNative public static native long captureFrameSize();
+    @FastNative private static native boolean captureFrameNative(Bitmap bitmap);
+
+    public boolean captureRuntimeFrame(Bitmap bitmap) {
+        return captureFrameNative(bitmap);
+    }
 
     public void adjustRendererZoom(int delta) {
         rendererZoom = MathUtils.clamp(rendererZoom + delta, 100, 400);

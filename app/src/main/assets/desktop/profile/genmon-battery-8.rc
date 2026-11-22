@@ -1,0 +1,4 @@
+Command=/usr/local/bin/doro-battery-status
+UseLabel=0
+UpdatePeriod=10000
+Text=

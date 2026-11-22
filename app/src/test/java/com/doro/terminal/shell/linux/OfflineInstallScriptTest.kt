@@ -13,10 +13,12 @@ class OfflineInstallScriptTest {
     }
 
     @Test
-    fun unpacksBeforeConfiguringAllPackages() {
+    fun installsDependencyBatchesWithCompleteDpkgRuns() {
         val script = OfflineInstallScript.build("bootstrap-packages.txt")
-        assertTrue(script.contains("xargs -a \"\$manifest\" dpkg \$dpkg_opts --unpack"))
-        assertTrue(script.indexOf("--unpack") < script.indexOf("--configure -a"))
+        assertTrue(script.contains("while IFS= read -r package"))
+        assertTrue(script.contains("xargs -a \"\$batch\" dpkg \$dpkg_opts -i"))
+        assertFalse(script.contains("--unpack"))
+        assertTrue(script.indexOf("while IFS=") < script.indexOf("xargs -a"))
     }
 
     @Test

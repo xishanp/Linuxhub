@@ -5,10 +5,11 @@ object SetupCatalog {
         InstallComponent.SUDO,
         InstallComponent.CHINESE,
         InstallComponent.DESKTOP,
-        InstallComponent.XFCE,
+        InstallComponent.GNOME,
         InstallComponent.X11,
         InstallComponent.PULSEAUDIO,
-        InstallComponent.FILE_MANAGER
+        InstallComponent.FILE_MANAGER,
+        InstallComponent.CHROME
     )
 
     private val onDemandComponents: Set<InstallComponent> = setOf(
@@ -21,8 +22,7 @@ object SetupCatalog {
         InstallComponent.RUST,
         InstallComponent.GO,
         InstallComponent.PYTHON_AI,
-        InstallComponent.JUPYTER,
-        InstallComponent.FIREFOX
+        InstallComponent.JUPYTER
     )
 
     val hiddenComponents: Set<InstallComponent> = builtInComponents + onDemandComponents + setOf(
@@ -37,7 +37,7 @@ object SetupCatalog {
     fun resolveSelection(selected: Set<InstallComponent>): Set<InstallComponent> {
         val desktopBuiltIns = if (InstallComponent.DESKTOP in selected) {
             setOf(
-                InstallComponent.XFCE,
+                InstallComponent.GNOME,
                 InstallComponent.X11,
                 InstallComponent.PULSEAUDIO,
                 InstallComponent.FILE_MANAGER

@@ -1,0 +1,7 @@
+# Each component is a standalone Git downstream import. Keep upstream history
+# out of the Android application repository.
+/gnome-shell/
+/mutter/
+/gjs/
+/build/
+/artifacts/

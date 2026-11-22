@@ -19,6 +19,7 @@ dbus-session-bus-common
 dbus-system-bus-common
 dbus-user-session
 dbus-x11
+dconf-cli
 dconf-gsettings-backend
 dconf-service
 desktop-file-utils
@@ -46,6 +47,7 @@ fontconfig
 fontconfig-config
 fonts-dejavu-core
 fonts-dejavu-mono
+fonts-liberation
 fonts-noto-cjk
 gcc-13-base
 glib-networking
@@ -74,6 +76,8 @@ iproute2
 iputils-ping
 keyboxd
 kmod
+language-pack-gnome-zh-hans
+language-pack-zh-hans
 less
 libadwaita-1-0
 libapparmor1
@@ -88,6 +92,7 @@ libasyncns0
 libatasmart4
 libatk-bridge2.0-0t64
 libatk1.0-0t64
+libatomic1
 libatspi2.0-0t64
 libavahi-client3
 libavahi-common-data
@@ -164,6 +169,8 @@ libfribidi0
 libgarcon-1-0
 libgarcon-common
 libgarcon-gtk3-1-0
+libgbm1
+libgcc-s1
 libgck-2-2
 libgcr-4-4
 libgdata-common
@@ -175,6 +182,7 @@ libgdk-pixbuf2.0-common
 libgee-0.8-2
 libgles2
 libglib2.0-0t64
+libglib2.0-bin
 libgnome-bluetooth-3.0-13
 libgnome-menu-3-0
 libgoa-1.0-0b
@@ -252,6 +260,7 @@ libmtdev1t64
 libmtp-common
 libmtp9t64
 libnautilus-extension4
+libncursesw6
 libndp0
 libnetplan1
 libnewt0.52
@@ -303,6 +312,7 @@ libqt5widgets5t64
 librav1e0
 libreadline8t64
 librsvg2-2
+librsvg2-common
 librtmp1
 libsamplerate0
 libsasl2-2
@@ -327,6 +337,7 @@ libspeexdsp1
 libsqlite3-0
 libssh-4
 libstartup-notification0
+libstdc++6
 libsvtav1enc1d1
 libswresample4
 libsystemd-shared
@@ -344,6 +355,7 @@ libtirpc-common
 libtirpc3t64
 libtumbler-1-0t64
 libtwolame0
+libudev1
 libudisks2-0
 libupower-glib3
 libusb-1.0-0
@@ -359,6 +371,7 @@ libvorbisenc2
 libvpx9
 libvte-2.91-0
 libvte-2.91-common
+libvulkan1
 libwacom-common
 libwacom9
 libwayland-client0
@@ -474,6 +487,7 @@ vim
 vim-common
 vim-runtime
 vulkan-tools
+wget
 whois
 wireless-regdb
 wpasupplicant
@@ -482,6 +496,7 @@ x11-session-utils
 x11-xkb-utils
 x11-xserver-utils
 xbitmaps
+xdg-utils
 xfce4
 xfce4-appfinder
 xfce4-genmon-plugin

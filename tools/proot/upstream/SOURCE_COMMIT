@@ -1,0 +1,4 @@
+upstream=https://github.com/termux/proot.git
+commit=d7033be7dd3b48b2d42a463a4e8547e40698c687
+base_tag=v5.1.107.87
+base_commit=87af48f58b752268cc4f93f251a9ca84e94c5655

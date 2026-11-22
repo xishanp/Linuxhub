@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Name[zh_CN]=终端
+Exec=env DORO_DESKTOP_TERMINAL=1 xfce4-terminal --disable-server --hide-menubar
+Icon=utilities-terminal
+Categories=System;TerminalEmulator;

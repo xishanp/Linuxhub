@@ -252,15 +252,17 @@ present_flip_try_ready(ScreenPtr screen)
     }
 }
 
-/* lorie: called when the renderer notifies that a GPU copy batch finished, instead of waiting
- * for the next vblank poll. _safe iteration since present_re_execute() may destroy the vblank. */
+/* lorie: called when the renderer notifies that a GPU copy batch finished, or that it just lost
+ * its surface, instead of waiting for the next vblank poll. _safe iteration since
+ * present_re_execute() may destroy the vblank. */
 void
 lorieRecheckGpuCopies(void)
 {
     present_vblank_ptr vblank, tmp;
+    Bool gpuCopyStalled = !lorieConnectionAlive(conn_fd) || !lorieRendererAvailable();
 
     xorg_list_for_each_entry_safe(vblank, tmp, &present_exec_queue, event_queue) {
-        if (vblank->gpu_copy_pending && lorieGpuCopyIsDone(vblank->gpu_copy_serial))
+        if (vblank->gpu_copy_pending && (lorieGpuCopyIsDone(vblank->gpu_copy_serial) || gpuCopyStalled))
             present_re_execute(vblank);
     }
 }

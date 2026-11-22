@@ -1,0 +1,113 @@
+/* LinuxHub managed graphite material.
+ *
+ * One alpha layer per top-level surface. The XFCE panel is intentionally
+ * excluded: xfce4-panel renders its own background-rgba at application
+ * priority, and overriding it from user CSS caused the dark/black panel.
+ */
+@define-color doro_surface rgba(43, 46, 51, 0.72);
+
+window.background:not(.xfce4-panel),
+window.csd:not(.xfce4-panel),
+dialog.background {
+  background-color: @doro_surface;
+  background-image: none;
+}
+
+/* xfce4-terminal paints its VTE background from background-darkness.
+ * The top-level window must stay transparent or the 72% alpha is applied
+ * twice. The menu bar gets exactly the same single graphite layer. */
+window.background.xfce4-terminal {
+  background-color: transparent;
+  background-image: none;
+}
+
+window.background.xfce4-terminal menubar,
+window.background.xfce4-terminal .menubar,
+window.background.xfce4-terminal > box.background > menubar {
+  background-color: @doro_surface;
+  background-image: none;
+}
+
+window.background.xfce4-terminal > box.background,
+window.background.xfce4-terminal > box.background > menubar > menuitem {
+  background-color: transparent;
+  background-image: none;
+}
+
+window.background.thunar {
+  background-color: @doro_surface;
+  background-image: none;
+}
+
+headerbar,
+.titlebar,
+window headerbar,
+window .titlebar,
+window menubar,
+menubar,
+.menubar,
+toolbar,
+.toolbar,
+.primary-toolbar,
+notebook,
+notebook > stack,
+notebook > header,
+notebook > header > tabs,
+notebook > header > tabs > tab,
+scrolledwindow,
+viewport,
+terminal-window,
+.terminal-screen-container,
+vte-terminal,
+window .view,
+window treeview.view,
+window iconview.view,
+window.thunar .standard-view,
+window.thunar .shortcuts-pane,
+window.thunar .location-bar {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+menu,
+.menu,
+popover.background,
+popover.background > contents,
+tooltip.background {
+  background-color: @doro_surface;
+  background-image: none;
+}
+
+frame > border {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Do not set a background on #XfcePanelWindow here. Panel 1 reads its
+ * graphite rgba from xfconf; panel 2 uses an explicit transparent rgba. */
+.xfce4-panel.background button,
+.xfce4-panel.background button.flat,
+#XfcePanelWindow button,
+#XfcePanelWindow button.flat,
+#XfcePanelWindow #clock,
+#XfcePanelWindow .xfce4-clock {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.xfce4-panel.background button:hover,
+.xfce4-panel.background button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Desktop icon labels stay readable on the wallpaper. */
+XfdesktopIconView.view {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  -XfdesktopIconView-label-alpha: 90;
+  -XfdesktopIconView-selected-label-alpha: 180;
+}

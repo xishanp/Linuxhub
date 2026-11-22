@@ -551,6 +551,7 @@ Dispatch(void)
                         result =
                             (*client->requestVector[client->majorOp]) (client);
                         currentClient = NULL;
+                        ddxRequestDone();
                     }
                 }
                 if (!SmartScheduleSignalEnable)

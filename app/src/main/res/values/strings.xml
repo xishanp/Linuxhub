@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">LinuxHub</string>
+    <string name="desktop_session_notification_channel">LinuxHub 桌面</string>
+    <string name="desktop_session_notification_title">LinuxHub 桌面正在运行</string>
+    <string name="desktop_session_notification_text">Ubuntu 本地会话正在运行</string>
+    <string name="desktop_session_notification_force_stop">强制停止</string>
 </resources>

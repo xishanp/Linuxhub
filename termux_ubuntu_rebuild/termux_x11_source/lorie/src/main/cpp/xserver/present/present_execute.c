@@ -33,6 +33,8 @@ present_wait_fence_triggered(void *param)
     present_vblank_ptr      vblank = param;
     ScreenPtr               screen = vblank->screen;
     present_screen_priv_ptr screen_priv = present_screen_priv(screen);
+    /* lorie: disarm, or miSyncTriggerFence()'s restart-scan re-fires this callback. */
+    present_fence_set_callback(vblank->wait_fence, NULL, NULL);
 
     screen_priv->re_execute(vblank);
 }
@@ -72,6 +74,9 @@ present_execute_copy(present_vblank_ptr vblank, uint64_t crtc_msc)
     PixmapPtr                   gpuCopyDst = screen->GetWindowPixmap(window);
     int16_t                     gpuCopyXOff = (int16_t) (vblank->x_off + window->drawable.x - gpuCopyDst->screen_x);
     int16_t                     gpuCopyYOff = (int16_t) (vblank->y_off + window->drawable.y - gpuCopyDst->screen_y);
+    /* lorie: renderer can be connected but still unable to ever finish a pending GPU copy
+     * (e.g. activity backgrounded, no surface) - completedSerial won't advance either way. */
+    Bool                         gpuCopyStalled = !lorieConnectionAlive(conn_fd) || !lorieRendererAvailable();
 
     /* If present_flip failed, we may have to requeue for the next MSC */
     if (vblank->exec_msc == crtc_msc + 1 &&
@@ -84,10 +89,9 @@ present_execute_copy(present_vblank_ptr vblank, uint64_t crtc_msc)
         return;
     }
 
-    /* lorie: a GPU copy was already scheduled; poll for completion instead of blocking. Give up
-     * and treat it as done if the renderer connection died (completedSerial would never advance). */
+    /* lorie: a GPU copy was already scheduled; poll for completion instead of blocking. */
     if (vblank->gpu_copy_pending && !lorieGpuCopyIsDone(vblank->gpu_copy_serial) &&
-        lorieConnectionAlive() &&
+        !gpuCopyStalled &&
         Success == screen_priv->queue_vblank(screen, window, vblank->crtc, vblank->event_id, crtc_msc + 1)) {
         vblank->queued = TRUE;
         return;
@@ -96,16 +100,35 @@ present_execute_copy(present_vblank_ptr vblank, uint64_t crtc_msc)
     if (vblank->gpu_copy_pending) {
         lorieGpuCopyAck(vblank->pixmap, vblank->gpu_copy_dst_buffer);
         vblank->gpu_copy_pending = FALSE;
+        if (gpuCopyStalled && !lorieGpuCopyIsDone(vblank->gpu_copy_serial)) {
+            /* lorie: the renderer never actually finished this copy - tell the client it was
+             * skipped instead of falsely reporting it as presented. */
+            present_vblank_scrap(vblank);
+            screen_priv->flush(window);
+            return;
+        }
+        if (vblank->gpu_copy_damage) {
+            DamageDamageRegion(&window->drawable, vblank->gpu_copy_damage);
+            RegionDestroy(vblank->gpu_copy_damage);
+            vblank->gpu_copy_damage = NULL;
+        }
     } else if (lorieTryScheduleGpuCopy(vblank->pixmap, gpuCopyDst, vblank->update, gpuCopyXOff, gpuCopyYOff,
                                         &vblank->gpu_copy_serial, &vblank->gpu_copy_dst_buffer)) {
         /* lorie: our GPU blit writes the destination pixmap directly, bypassing the normal GC
          * ops that Damage tracking hooks into, so report it manually - same drawable and region
          * present_scmd.c's flip success path already uses, so this also reaches Composite's
-         * per-window damage for redirected windows, not just lorie's own root damage. */
-        RegionPtr damage = vblank->update ? vblank->update : &window->clipList;
-        if (vblank->update)
-            RegionIntersect(damage, damage, &window->clipList);
-        DamageDamageRegion(&window->drawable, damage);
+         * per-window damage for redirected windows, not just lorie's own root damage.
+         * vblank->update is in pixmap coordinates, damage and clipList are in screen coordinates. */
+        RegionPtr damage = RegionDuplicate(vblank->update ? vblank->update : &window->clipList);
+        if (damage) {
+            if (vblank->update) {
+                RegionTranslate(damage, vblank->x_off + window->drawable.x, vblank->y_off + window->drawable.y);
+                RegionIntersect(damage, damage, &window->clipList);
+            }
+            DamageDamageRegion(&window->drawable, damage);
+            /* A compositor may have read the destination before the GPU copy finished: report again once done. */
+            vblank->gpu_copy_damage = damage;
+        }
 
         /* lorie: copy offloaded to the renderer's GPU context. The region was already
          * consumed (copied into the shared command queue), so free it like
@@ -122,6 +145,20 @@ present_execute_copy(present_vblank_ptr vblank, uint64_t crtc_msc)
         /* Failed to requeue for polling (e.g. OOM) - release our extra ref and treat the
          * presumably still in-flight GPU copy as done; same best-effort fallback as above. */
         lorieGpuCopyAck(vblank->pixmap, vblank->gpu_copy_dst_buffer);
+        if (vblank->gpu_copy_damage) {
+            RegionDestroy(vblank->gpu_copy_damage);
+            vblank->gpu_copy_damage = NULL;
+        }
+    } else if (loriePixmapIsGpuOnly(vblank->pixmap)) {
+        /* lorie: the buffer can not be locked for the CPU, so there is no CPU copy to fall back to:
+         * keep the request until the GPU copy can be scheduled. */
+        if (Success == screen_priv->queue_vblank(screen, window, vblank->crtc, vblank->event_id, crtc_msc + 1)) {
+            vblank->queued = TRUE;
+            return;
+        }
+        present_vblank_scrap(vblank);
+        screen_priv->flush(window);
+        return;
     } else {
         present_copy_region(&window->drawable, vblank->pixmap, vblank->update, vblank->x_off, vblank->y_off);
 

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=LinuxHub Package Installer
+Name[zh_CN]=LinuxHub 软件包安装器
+Comment=Install Debian packages with apt
+Comment[zh_CN]=使用 apt 安装 Debian 软件包
+Exec=/usr/local/bin/linuxhub-deb-installer %f
+TryExec=/usr/local/bin/linuxhub-deb-installer
+Icon=system-software-install
+Terminal=true
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;
+Categories=System;PackageManager;
+Keywords=deb;package;install;软件包;安装;
+NoDisplay=true
+StartupNotify=false

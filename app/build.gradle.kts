@@ -5,15 +5,15 @@ plugins {
 
 android {
     namespace = "com.doro.terminal.shell"
-    compileSdk = 35
+    compileSdk = 37
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
-        applicationId = "com.linuxhub.app"
-        minSdk = 26
+        applicationId = "com.linuxhub.myth"
+        minSdk = 28
         targetSdk = 28
-        versionCode = 70
-        versionName = "1.1.902"
+        versionCode = 201
+        versionName = "Myth-Prometheus"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -51,6 +51,22 @@ android {
     
     androidResources {
         noCompress += listOf("tar")
+        // Preserve retained research assets on disk without shipping every
+        // incompatible runtime in the 24.04 APK. The 26.04 and legacy
+        // bootstrap artifacts remain available to their own source routes.
+        ignoreAssetsPattern =
+            "bootstrap-arm64.tar:gnome-26.04-arm64.tar:ubuntu-base-26.04.1-base-arm64.tar.gz"
+    }
+
+    sourceSets {
+        getByName("main") {
+            // Keep the validated fallback for normal builds, but never package
+            // it together with a freshly rebuilt Xlorie. AGP silently chooses
+            // one duplicate, which can otherwise ship stale native capture code.
+            if (project.findProperty("rebuildX11Native") != "true") {
+                jniLibs.srcDir("src/main/jniLibs-fallback")
+            }
+        }
     }
 }
 
@@ -65,6 +81,7 @@ configurations.all {
 
 dependencies {
 
+    implementation(files("libs/liquidglass-release.aar"))
     implementation(project(":terminal-view"))
     implementation(project(":x11-lorie"))
     implementation(libs.androidx.core.ktx)
@@ -76,9 +93,11 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation(libs.kyant.backdrop)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

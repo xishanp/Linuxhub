@@ -381,16 +381,16 @@ ExaCheckCopyWindow(WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
 
         exaGetDrawableDeltas(&pWin->drawable, pPixmap, &xoff, &yoff);
         RegionTranslate(prgnSrc, xoff, yoff);
-        pExaScr->prepare_access_reg(pPixmap, EXA_PREPARE_SRC, prgnSrc);
+        pExaScr->prepare_access_reg(pPixmap, EXA_PREPARE_DEST, prgnSrc);
         RegionTranslate(prgnSrc, -xoff, -yoff);
     }
     else
-        exaPrepareAccess(pDrawable, EXA_PREPARE_SRC);
+        exaPrepareAccess(pDrawable, EXA_PREPARE_DEST);
 
     swap(pExaScr, pScreen, CopyWindow);
     pScreen->CopyWindow(pWin, ptOldOrg, prgnSrc);
     swap(pExaScr, pScreen, CopyWindow);
-    exaFinishAccess(pDrawable, EXA_PREPARE_SRC);
+    exaFinishAccess(pDrawable, EXA_PREPARE_DEST);
     EXA_POST_FALLBACK(pScreen);
 }
 

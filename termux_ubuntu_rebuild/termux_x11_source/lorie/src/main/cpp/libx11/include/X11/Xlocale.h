@@ -32,6 +32,12 @@ from The Open Group.
 #include <X11/Xfuncproto.h>
 #include <X11/Xosdefs.h>
 
+#if defined(__clang__) && defined(__ANDROID__)
+/* -Ilibx11/include/X11 is needed for Xlib's internal headers. On a
+ * case-insensitive macOS filesystem, <xlocale.h> would otherwise resolve back
+ * to this file and locale_t would never be declared. Skip this directory. */
+#include_next <xlocale.h>
+#endif
 #include <locale.h>
 
 #endif /* _X11_XLOCALE_H_ */

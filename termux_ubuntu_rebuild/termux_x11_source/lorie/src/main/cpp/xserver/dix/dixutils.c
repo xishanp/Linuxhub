@@ -504,27 +504,25 @@ InitBlockAndWakeupHandlers(void)
  * sleeps for input.
  */
 
+#define ClearWorkQueue _ClearWorkQueue
+#define ProcessWorkQueue _ProcessWorkQueue
+#define ProcessWorkQueueZombies _ProcessWorkQueueZombies
+#define QueueWorkProc _QueueWorkProc
+
 WorkQueuePtr workQueue;
 static WorkQueuePtr *workQueueLast = &workQueue;
-static pthread_spinlock_t workQueueLock;
-
-__attribute__((constructor)) static void workQueueLockInit (void) {
-    pthread_spin_init(&workQueueLock, FALSE);
-}
 
 void
 ClearWorkQueue(void)
 {
     WorkQueuePtr q, *p;
 
-    pthread_spin_lock(&workQueueLock);
     p = &workQueue;
     while ((q = *p)) {
         *p = q->next;
         free(q);
     }
     workQueueLast = p;
-    pthread_spin_unlock(&workQueueLock);
 }
 
 void
@@ -532,7 +530,6 @@ ProcessWorkQueue(void)
 {
     WorkQueuePtr q, *p;
 
-    pthread_spin_lock(&workQueueLock);
     p = &workQueue;
     /*
      * Scan the work queue once, calling each function.  Those
@@ -541,20 +538,16 @@ ProcessWorkQueue(void)
      * QueueWorkProc.
      */
     while ((q = *p)) {
-        pthread_spin_unlock(&workQueueLock);
         if ((*q->function) (q->client, q->closure)) {
-            pthread_spin_lock(&workQueueLock);
             /* remove q from the list */
             *p = q->next;       /* don't fetch until after func called */
             free(q);
         }
         else {
-            pthread_spin_lock(&workQueueLock);
             p = &q->next;       /* don't fetch until after func called */
         }
     }
     workQueueLast = p;
-    pthread_spin_unlock(&workQueueLock);
 }
 
 void
@@ -562,7 +555,6 @@ ProcessWorkQueueZombies(void)
 {
     WorkQueuePtr q, *p;
 
-    pthread_spin_lock(&workQueueLock);
     p = &workQueue;
     while ((q = *p)) {
         if (q->client && q->client->clientGone) {
@@ -576,7 +568,6 @@ ProcessWorkQueueZombies(void)
         }
     }
     workQueueLast = p;
-    pthread_spin_unlock(&workQueueLock);
 }
 
 Bool
@@ -592,12 +583,15 @@ QueueWorkProc(Bool (*function) (ClientPtr pClient, void *closure),
     q->client = client;
     q->closure = closure;
     q->next = NULL;
-    pthread_spin_lock(&workQueueLock);
     *workQueueLast = q;
     workQueueLast = &q->next;
-    pthread_spin_unlock(&workQueueLock);
     return TRUE;
 }
+
+#undef ClearWorkQueue
+#undef ProcessWorkQueue
+#undef ProcessWorkQueueZombies
+#undef QueueWorkProc
 
 /*
  * Manage a queue of sleeping clients, awakening them

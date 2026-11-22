@@ -1,5 +1,6 @@
 package com.doro.terminal.shell.linux
 
+import android.os.Process
 import java.io.File
 
 object GetifaddrsBridge {
@@ -13,8 +14,17 @@ object GetifaddrsBridge {
         check(source.isFile) { "getifaddrs客户端库缺失" }
         val target = File(rootfsDir, CONTAINER_LIBRARY.removePrefix("/"))
         target.parentFile?.mkdirs()
-        source.inputStream().use { input -> target.outputStream().use(input::copyTo) }
-        target.setReadable(true, false)
-        target.setExecutable(true, false)
+        val temporary = File(
+            target.parentFile,
+            "${target.name}.tmp-${Process.myPid()}-${Thread.currentThread().id}-${System.nanoTime()}",
+        )
+        source.inputStream().use { input -> temporary.outputStream().use(input::copyTo) }
+        temporary.setReadable(true, false)
+        temporary.setExecutable(true, false)
+        try {
+            check(temporary.renameTo(target)) { "getifaddrs客户端库替换失败" }
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
     }
 }

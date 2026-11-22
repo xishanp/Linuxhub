@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Home
+Name[zh_CN]=主文件夹
+Exec=thunar
+Icon=user-home
+Categories=System;FileTools;FileManager;

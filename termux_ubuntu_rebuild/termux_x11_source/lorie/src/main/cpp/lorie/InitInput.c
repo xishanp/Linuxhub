@@ -42,7 +42,6 @@ from The Open Group.
 #define XI_ERASER	"TERMUX-X11 ERASER"
 
 __unused DeviceIntPtr lorieMouse, lorieTouch, lorieKeyboard, loriePen, lorieEraser;
-
 void
 ProcessInputEvents(void) {
     mieqProcessInputEvents();

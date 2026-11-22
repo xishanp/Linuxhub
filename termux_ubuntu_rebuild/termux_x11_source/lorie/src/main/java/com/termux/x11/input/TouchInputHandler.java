@@ -137,7 +137,12 @@ public class TouchInputHandler {
      * is performing a drag operation.
      */
     private boolean mIsDragging;
-    private boolean mSingleFingerLongPressPending;
+
+    /**
+     * Set to true when a one-finger long-press has fired but no button has been sent yet.
+     * Released without movement: right click. Moved: start a held-left drag.
+     */
+    private boolean mPendingLongPressRightClick;
     private static DisplayManager mDisplayManager;
     private static int mDisplayRotation;
     private static final DisplayManager.DisplayListener mDisplayListener = new DisplayManager.DisplayListener() {
@@ -370,18 +375,21 @@ public class TouchInputHandler {
                     mSuppressCursorMovement = false;
                     mSwipeCompleted = false;
                     mIsDragging = false;
-                    mSingleFingerLongPressPending = false;
+                    mPendingLongPressRightClick = false;
                     break;
 
                 case MotionEvent.ACTION_UP:
-                    if (mSingleFingerLongPressPending) {
-                        mSingleFingerLongPressPending = false;
-                        mInputStrategy.onTap(InputStub.BUTTON_RIGHT);
+                    if (mPendingLongPressRightClick) {
+                        // Long-press released without moving is a context-menu click.
+                        mPendingLongPressRightClick = false;
+                        mInjector.sendMouseClick(
+                                InputStub.BUTTON_RIGHT,
+                                mInputStrategy instanceof InputStrategyInterface.TrackpadInputStrategy);
                     }
                     break;
 
                 case MotionEvent.ACTION_CANCEL:
-                    mSingleFingerLongPressPending = false;
+                    mPendingLongPressRightClick = false;
                     break;
 
                 case MotionEvent.ACTION_SCROLL:
@@ -680,8 +688,9 @@ public class TouchInputHandler {
             if (pointerCount != 1 || mSuppressCursorMovement)
                 return false;
 
-            if (mSingleFingerLongPressPending) {
-                mSingleFingerLongPressPending = false;
+            if (mPendingLongPressRightClick) {
+                // Movement after the long-press threshold turns the gesture into a drag.
+                mPendingLongPressRightClick = false;
                 if (mInputStrategy.onPressAndHold(InputStub.BUTTON_LEFT, false))
                     mIsDragging = true;
             }
@@ -757,16 +766,6 @@ public class TouchInputHandler {
         /** Called when a long-press is triggered for one or more fingers. */
         @Override
         public void onLongPress(int pointerCount, float x, float y) {
-            if (pointerCount == 1) {
-                if (!(mInputStrategy instanceof InputStrategyInterface.TrackpadInputStrategy)) {
-                    if (screenPointLiesOutsideImageBoundary(x, y))
-                        return;
-                    moveCursorToScreenPoint(x, y);
-                }
-                mSingleFingerLongPressPending = true;
-                return;
-            }
-
             int button = mouseButtonFromPointerCount(pointerCount);
             if (button == InputStub.BUTTON_UNDEFINED) {
                 return;
@@ -776,6 +775,12 @@ public class TouchInputHandler {
                 if (screenPointLiesOutsideImageBoundary(x, y))
                     return;
                 moveCursorToScreenPoint(x, y);
+            }
+
+            if (pointerCount == 1) {
+                // Wait for release: stationary means right click, movement means left drag.
+                mPendingLongPressRightClick = true;
+                return;
             }
 
             if (mInputStrategy.onPressAndHold(button, false))

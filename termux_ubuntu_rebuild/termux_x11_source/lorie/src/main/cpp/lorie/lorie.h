@@ -39,30 +39,35 @@ void lorieActivityConnected(void);
 void lorieSendSharedServerState(int memfd);
 void lorieRegisterBuffer(LorieBuffer* buffer);
 void lorieUnregisterBuffer(LorieBuffer* buffer);
-bool lorieConnectionAlive(void);
+bool lorieConnectionAlive(int fd);
 extern bool lorieDebugEnabled; // Set in activity.c's startLogcat, only called when TERMUX_X11_DEBUG=1.
 void lorieSetRendererWakeupCond(int fd);
 int rendererGetWakeupCondFd(void);
 
 __unused void rendererInit(JNIEnv* env);
 __unused void rendererSetFiltering(JNIEnv* env, jobject self, jint filtering);
-__unused void rendererTestCapabilities(int* legacy_drawing);
-__unused void rendererSetWindow(JNIEnv *env, jobject thiz, jobject sfc);
+__unused void rendererTestCapabilities(int* legacy_drawing, int* gpu_present_disabled);
+__unused void rendererSetWindow(JNIEnv *env, jobject thiz, jobject sfc, jint expectedWidth, jint expectedHeight);
 __unused void rendererSetViewport(JNIEnv *env, jclass clazz, int x, int y, int w, int h, int ew, int eh);
 __unused void rendererSetZoom(JNIEnv *env, jclass clazz, int percent);
 __unused void rendererSetSharedState(struct lorie_shared_server_state* newState);
+void lorieSetContinuousFrames(uint8_t enabled);
 __unused void rendererAddBuffer(LorieBuffer* buf);
 __unused void rendererRemoveBuffer(uint64_t id);
 __unused void rendererRemoveAllBuffers(void);
+__unused int rendererGetFrameWidth(JNIEnv* env, jclass clazz);
+__unused int rendererGetFrameHeight(JNIEnv* env, jclass clazz);
+__unused jlong rendererGetFrameSize(JNIEnv* env, jclass clazz);
+__unused bool rendererCaptureFrame(JNIEnv* env, jclass clazz, jobject bitmap);
 
-static inline __always_inline void lorie_mutex_lock(pthread_mutex_t* mutex, pid_t* lockingPid) {
+static inline __always_inline void lorie_mutex_lock(pthread_mutex_t* mutex, pid_t* lockingPid, int connFd) {
     // Unfortunately there is no robust mutexes in bionic.
     // Posix does not define any valid way to unlock stuck non-robust mutex
     // so in the case if renderer or X server process unexpectedly die with locked mutex
     // we will simply reinitialize it.
     struct timespec ts = {0};
     while(true) {
-        clock_gettime(CLOCK_MONOTONIC, &ts);
+        clock_gettime(CLOCK_REALTIME, &ts);
 
         // 33 msec is enough to complete any drawing operation on both X server and renderer side
         // In the case if mutex is locked most likely other thread died with the mutex locked
@@ -74,7 +79,7 @@ static inline __always_inline void lorie_mutex_lock(pthread_mutex_t* mutex, pid_
 
         int ret = pthread_mutex_timedlock(mutex, &ts);
         if (ret == ETIMEDOUT) {
-            if (*lockingPid == getpid() || lorieConnectionAlive())
+            if (*lockingPid == getpid() || lorieConnectionAlive(connFd))
                 continue;
 
             pthread_mutexattr_t attr;
@@ -211,6 +216,12 @@ struct lorie_shared_server_state {
     /* A signal to renderer to update root window texture content from shared fragment if needed */
     volatile uint8_t drawRequested;
 
+    /* Keep a fixed video cadence even when the desktop has no damage. */
+    volatile uint8_t continuousFrames;
+
+    /* Renderer is waiting for `lock`; the X server hands it over when the current request ends. */
+    volatile uint32_t rendererWaiting;
+
     /* We should avoid triggering renderer if there is no output surface */
     volatile uint8_t surfaceAvailable;
 
@@ -263,7 +274,7 @@ struct Renderer {
     struct xorg_list addedBuffers, buffers, removedBuffers;
     volatile jint filtering = GL_NEAREST;
 
-    volatile bool stateChanged = false, windowChanged = false;
+    volatile bool stateChanged = false, windowChanged = false, viewportWaitReset = false;
     struct lorie_shared_server_state* pendingState = nullptr;
     ANativeWindow* pendingWin = nullptr;
     volatile int viewportX = 0, viewportY = 0, viewportW = 0, viewportH = 0, expectedW = 0, expectedH = 0;
@@ -294,16 +305,6 @@ struct Renderer {
     GLuint g_texture_program = 0, gv_pos = 0, gv_coords = 0;
     GLuint g_texture_program_bgra = 0, gv_pos_bgra = 0, gv_coords_bgra = 0;
 
-    EGLint configAttribs[13] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 0,
-        EGL_NONE
-    };
-
     // Formerly function-local statics; moved here for the same reason as everything else above -
     // they are per-instance state, not per-process.
     uint64_t dstSizeLogCount = 0, srcSizeLogCount = 0;
@@ -313,17 +314,22 @@ struct Renderer {
     void* initThread(JavaVM* vm);
     int getWakeupCondFd();
     void setFiltering(jint f);
-    void testCapabilities(int* legacy_drawing);
+    void testCapabilities(int* legacy_drawing, int* gpu_present_disabled);
     void setSharedState(struct lorie_shared_server_state* newState);
     void addBuffer(LorieBuffer* buf);
     void removeBuffer(uint64_t id);
     void removeAllBuffers();
-    void setWindow(JNIEnv* env, jobject jsfc);
+    void setWindow(JNIEnv* env, jobject jsfc, int expectedWidth, int expectedHeight);
     void setViewport(int x, int y, int w, int h, int ew, int eh);
     void setZoom(int percent);
     void releaseWinAndSurface(ANativeWindow** anw, EGLSurface* esfc);
     void refreshContext();
     LorieBuffer* findBufferWithRetry(uint64_t id);
+    LorieBuffer* acquireRootBuffer();
+    bool captureFrame(JNIEnv* env, jobject bitmap);
+    int frameWidth();
+    int frameHeight();
+    jlong frameSize();
     uint64_t applyPendingGpuCopiesLocked();
     void applyPendingGpuCopies();
     void redrawLocked(bool* waitingForBuffers);
@@ -331,7 +337,7 @@ struct Renderer {
     void threadLoop();
     void bindTexture(GLuint id);
     void reportViewport(int dstX, int dstY, int dstW, int dstH, float left, float top, float width, float height);
-    void drawRegion(GLuint id, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint8_t flip);
+    void drawRegion(GLuint id, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint8_t flip, GLint textureFilter = 0);
     void drawCursor(float displayWidth, float displayHeight, float sourceLeft, float sourceTop);
 };
 #endif

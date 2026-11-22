@@ -97,6 +97,7 @@ struct present_vblank {
     Bool                gpu_copy_pending;
     uint64_t            gpu_copy_serial;
     void                *gpu_copy_dst_buffer; /* opaque LorieBuffer*, held for lorieGpuCopyAck */
+    RegionPtr           gpu_copy_damage; /* reported as damaged once the GPU copy has finished */
 };
 
 /* lorie: hooks implemented in lorie/InitOutput.c, used by present_execute_copy() to offload the
@@ -106,8 +107,15 @@ extern Bool lorieTryScheduleGpuCopy(PixmapPtr pixmap, PixmapPtr dst, RegionPtr u
                                      uint64_t *out_serial, void **out_dst_buffer);
 extern Bool lorieGpuCopyIsDone(uint64_t serial);
 extern void lorieGpuCopyAck(PixmapPtr pixmap, void *dst_buffer);
+/* lorie: the pixmap's buffer can not be locked for the CPU, so Present must never use a CPU copy for it. */
+extern Bool loriePixmapIsGpuOnly(PixmapPtr pixmap);
 /* lorie: implemented in lorie/cmdentrypoint.c. Avoids waiting forever on a GPU copy that a dead renderer will never finish. */
-extern bool lorieConnectionAlive(void);
+extern bool lorieConnectionAlive(int fd);
+extern volatile int conn_fd;
+/* lorie: implemented in lorie/InitOutput.c. Renderer can be connected but still unable to
+ * draw (e.g. activity backgrounded, no surface) - same "give up on this GPU copy" cases as
+ * lorieConnectionAlive() need to check this too. */
+extern bool lorieRendererAvailable(void);
 
 /* lorie: implemented in present_scmd.c; re-executes any vblank whose GPU copy has finished. */
 extern void lorieRecheckGpuCopies(void);

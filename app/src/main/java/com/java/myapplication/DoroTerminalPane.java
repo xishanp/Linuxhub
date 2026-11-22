@@ -3,9 +3,9 @@ package com.java.myapplication;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Color;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.ViewConfiguration;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.inputmethod.InputMethodManager;
@@ -24,15 +24,12 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
     private static final String TAG = "DoroTerminal";
     private final TerminalView terminalView;
     private final TerminalSession session;
-    private final int touchSlop;
-    private float touchDownX;
-    private float touchDownY;
-    private boolean touchMoved;
+    private boolean ctrlLocked;
+    private boolean altLocked;
 
     public DoroTerminalPane(Context context, String shellPath, String cwd, String[] args, String[] env) {
         super(context);
         setBackgroundColor(Color.rgb(35, 35, 35));
-        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         terminalView = new TerminalView(context, null);
         terminalView.setTerminalViewClient(this);
         terminalView.setFocusable(true);
@@ -43,30 +40,10 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
         session = new TerminalSession(shellPath, cwd, args, env, 2000, this);
         terminalView.attachSession(session);
         terminalView.requestFocus();
-        terminalView.setOnTouchListener((v, event) -> {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchDownX = event.getX();
-                    touchDownY = event.getY();
-                    touchMoved = false;
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    if (Math.abs(event.getX() - touchDownX) > touchSlop ||
-                        Math.abs(event.getY() - touchDownY) > touchSlop) touchMoved = true;
-                    break;
-                case MotionEvent.ACTION_UP:
-                    if (!touchMoved) showKeyboard();
-                    break;
-                case MotionEvent.ACTION_CANCEL:
-                    touchMoved = true;
-                    break;
-            }
-            return false;
-        });
     }
 
     public void showKeyboard() {
-        terminalView.requestFocusFromTouch();
+        terminalView.requestFocus();
         terminalView.post(() -> {
             InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
             imm.restartInput(terminalView);
@@ -79,9 +56,49 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
         terminalView.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, keyCode));
     }
 
-    public void toggleCtrl() {
-        terminalView.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT));
-        terminalView.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT));
+    public void sendTerminalText(@Nullable String text) {
+        if (TextUtils.isEmpty(text)) return;
+        terminalView.requestFocus();
+        session.write(text);
+    }
+
+    public boolean copySelectionToClipboard() {
+        String selected = terminalView.getSelectedText();
+        if (TextUtils.isEmpty(selected)) return false;
+        ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("terminal", selected));
+        return true;
+    }
+
+    public boolean pasteClipboardToTerminal() {
+        ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!clipboard.hasPrimaryClip() || clipboard.getPrimaryClip() == null ||
+            clipboard.getPrimaryClip().getItemCount() == 0) return false;
+        CharSequence text = clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext());
+        if (TextUtils.isEmpty(text)) return false;
+        terminalView.requestFocus();
+        TerminalEmulator emulator = session.getEmulator();
+        if (emulator != null) emulator.paste(text.toString());
+        else session.write(text.toString());
+        return true;
+    }
+
+    public void setCtrlLocked(boolean locked) {
+        ctrlLocked = locked;
+        terminalView.invalidate();
+    }
+
+    public boolean isCtrlLocked() {
+        return ctrlLocked;
+    }
+
+    public void setAltLocked(boolean locked) {
+        altLocked = locked;
+        terminalView.invalidate();
+    }
+
+    public boolean isAltLocked() {
+        return altLocked;
     }
 
     public void close() {
@@ -96,9 +113,7 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("terminal", text));
     }
     @Override public void onPasteTextFromClipboard(@Nullable TerminalSession session) {
-        ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount() > 0)
-            this.session.write(clipboard.getPrimaryClip().getItemAt(0).coerceToText(getContext()).toString());
+        pasteClipboardToTerminal();
     }
     @Override public void onBell(@NonNull TerminalSession session) { }
     @Override public void onColorsChanged(@NonNull TerminalSession session) { terminalView.invalidate(); }
@@ -120,8 +135,8 @@ public final class DoroTerminalPane extends FrameLayout implements TerminalSessi
     @Override public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) { return false; }
     @Override public boolean onKeyUp(int keyCode, KeyEvent e) { return false; }
     @Override public boolean onLongPress(MotionEvent event) { return false; }
-    @Override public boolean readControlKey() { return false; }
-    @Override public boolean readAltKey() { return false; }
+    @Override public boolean readControlKey() { return ctrlLocked; }
+    @Override public boolean readAltKey() { return altLocked; }
     @Override public boolean readShiftKey() { return false; }
     @Override public boolean readFnKey() { return false; }
     @Override public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) { return false; }

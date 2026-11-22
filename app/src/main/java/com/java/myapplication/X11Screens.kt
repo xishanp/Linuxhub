@@ -13,7 +13,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +23,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
+import ai.lotus.liquidglass.LiquidGlassSurface
+import ai.lotus.liquidglass.rememberLiquidPress
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -41,17 +40,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.doro.terminal.shell.linux.LinuxContainerManager
+import com.doro.terminal.shell.desktop.LinuxHubDesktopSession
 import com.doro.terminal.shell.x11.LorieX11Runtime
 import com.doro.terminal.shell.x11.X11RuntimeManager
 import com.termux.x11.LorieView
@@ -59,42 +57,49 @@ import com.termux.x11.input.EmbeddedInputController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
-internal val XAccent = Color(0xFF6C4EB3)
-internal val XBackground = Color(0xFFFFF8FF)
-internal val XText = Color(0xFF49454F)
+internal val XAccent = AppleInk
+internal val XBackground = AppleCanvas
+internal val XText = AppleInk
 
 @Composable
-fun TerminalSettingsPage(onBack: () -> Unit, onMorePermissions: () -> Unit) {
+fun TerminalSettingsPage() {
     val context = LocalContext.current
     val prefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(context) }
-    Box(Modifier.fillMaxSize().background(XBackground), contentAlignment = Alignment.TopCenter) {
+    val displayMode = rememberStringPreference(prefs, "displayResolutionMode", "native")
+    val touchMode = rememberStringPreference(prefs, "touchMode", "1")
+    val availability = settingsAvailability(displayMode, touchMode)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     Column(
-        Modifier.fillMaxSize().widthIn(max = 720.dp).padding(top = 48.dp)
+        Modifier.fillMaxSize().widthIn(max = 720.dp).statusBarsPadding().padding(top = 8.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("‹", Modifier.clickable(onClick = onBack).padding(12.dp), color = XAccent, fontSize = 38.sp)
-            Text("LinuxHub 设置", color = XText, fontSize = 25.sp)
-        }
+        LinuxHubPageHeader("LinuxHub 设置")
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 130.dp)
         ) {
             SettingSection("GPU 加速")
-            SwitchSetting("Turnip + Zink GPU 加速", "gpuAcceleration", true, prefs)
+            SwitchSetting("应用 GPU 加速（默认开启；GNOME 合成仍使用安全软件路径）", "gpuAcceleration", true, prefs)
 
             SettingSection("X11 显示输出")
             ChoiceSetting("分辨率模式", "displayResolutionMode", listOf("原生" to "native", "缩放" to "scaled", "精确" to "exact", "自定义" to "custom"), prefs)
-            SliderSetting("显示缩放", "displayScale", 30f, 300f, 100f, prefs)
-            ChoiceSetting("精确分辨率", "displayResolutionExact", listOf("1280×720" to "1280x720", "1280×800" to "1280x800", "1280×1024" to "1280x1024", "1600×900" to "1600x900", "1920×1080" to "1920x1080", "1920×1200" to "1920x1200"), prefs)
-            TextSetting("自定义分辨率", "displayResolutionCustom", "1280x800", prefs)
+            if (availability.showDisplayScale) {
+                SliderSetting("显示缩放", "displayScale", 30f, 300f, 100f, prefs)
+            }
+            if (availability.showExactResolution) {
+                ChoiceSetting("精确分辨率", "displayResolutionExact", listOf("1280×720" to "1280x720", "1280×800" to "1280x800", "1280×1024" to "1280x1024", "1600×900" to "1600x900", "1920×1080" to "1920x1080", "1920×1200" to "1920x1200"), prefs)
+            }
+            if (availability.showCustomResolution) {
+                TextSetting("自定义分辨率", "displayResolutionCustom", "1280x800", prefs)
+            }
             ChoiceSetting("过滤模式", "displayFilteringMode", listOf("最近邻" to "nearest", "双线性" to "bilinear"), prefs)
-            SwitchSetting("自动调整分辨率", "adjustResolution", false, prefs)
-            SwitchSetting("拉伸显示", "displayStretch", false, prefs)
-            SwitchSetting("重新播种画面", "Reseed", true, prefs)
+            if (availability.showDisplaySizingControls) {
+                SwitchSetting("自动调整分辨率", "adjustResolution", false, prefs)
+                SwitchSetting("拉伸显示", "displayStretch", false, prefs)
+            }
+            SwitchSetting("键盘弹出时压缩显示", "Reseed", true, prefs)
             SwitchSetting("画中画", "PIP", false, prefs)
             SwitchSetting("全屏", "fullscreen", true, prefs)
             ChoiceSetting("强制方向", "forceOrientation", listOf("自动" to "auto", "横屏" to "landscape", "竖屏" to "portrait"), prefs)
@@ -103,10 +108,10 @@ fun TerminalSettingsPage(onBack: () -> Unit, onMorePermissions: () -> Unit) {
 
             SettingSection("指针输入")
             ChoiceSetting("触摸模式", "touchMode", listOf("触摸板" to "1", "模拟触摸" to "2", "直接触摸" to "3"), prefs)
-            SwitchSetting("缩放触摸板", "scaleTouchpad", true, prefs)
-            SwitchSetting("显示手写笔按键", "showStylusClickOverride", false, prefs)
+            if (availability.showScaleTouchpad) {
+                SwitchSetting("缩放触摸板", "scaleTouchpad", true, prefs)
+            }
             SwitchSetting("手写笔作为鼠标", "stylusIsMouse", false, prefs)
-            SwitchSetting("显示鼠标助手", "showMouseHelper", false, prefs)
             SwitchSetting("捕获鼠标指针", "pointerCapture", false, prefs)
             ChoiceSetting("捕获指针变换", "transformCapturedPointer", listOf("无" to "no", "顺时针" to "c", "逆时针" to "cc", "倒置" to "ud", "自动" to "at"), prefs)
             SliderSetting("指针速度", "capturedPointerSpeedFactor", 1f, 300f, 100f, prefs)
@@ -114,32 +119,42 @@ fun TerminalSettingsPage(onBack: () -> Unit, onMorePermissions: () -> Unit) {
             SwitchSetting("忽略游戏手柄", "ignoreGamepadEvents", false, prefs)
 
             SettingSection("键盘输入")
-            SwitchSetting("显示附加键盘", "showAdditionalKbd", true, prefs)
-            SwitchSetting("外接键盘时显示输入法", "showIMEWhileExternalConnected", true, prefs)
+            // Termux:X11's standalone extra-key bar and accessibility key filter are not
+            // part of the embedded host. Their old preferences had no consumer here.
             SwitchSetting("优先使用扫描码", "preferScancodes", false, prefs)
             SwitchSetting("硬件键盘兼容模式", "hardwareKbdScancodesWorkaround", true, prefs)
             SwitchSetting("捕获 DeX Meta 键", "dexMetaKeyCapture", false, prefs)
             SwitchSetting("Esc 暂停按键拦截", "pauseKeyInterceptingWithEsc", false, prefs)
-            SwitchSetting("过滤 Windows 键", "filterOutWinkey", false, prefs)
             SwitchSetting("强制字符输入", "enforceCharBasedInput", false, prefs)
 
             SettingSection("其他行为")
             SwitchSetting("同步剪贴板", "clipboardEnable", true, prefs)
-            SwitchSetting("分开保存副屏设置", "storeSecondaryDisplayPreferencesSeparately", false, prefs)
-            SwitchSetting("附加键适配高度", "adjustHeightForEK", true, prefs)
-            SwitchSetting("使用 Termux 附加键行为", "useTermuxEKBarBehaviour", false, prefs)
-            SliderSetting("附加键透明度", "opacityEKBar", 1f, 100f, 100f, prefs)
-            ChoiceSetting("上滑动作", "swipeUpAction", listOf("无动作" to "no action", "显示键盘" to "toggle soft keyboard", "切换附加键" to "toggle additional key bar"), prefs)
-            ChoiceSetting("下滑动作", "swipeDownAction", listOf("无动作" to "no action", "显示键盘" to "toggle soft keyboard", "切换附加键" to "toggle additional key bar"), prefs)
+            ChoiceSetting("上滑动作", "swipeUpAction", listOf("无动作" to "no action", "显示键盘" to "toggle soft keyboard"), prefs)
+            ChoiceSetting("下滑动作", "swipeDownAction", listOf("无动作" to "no action", "显示键盘" to "toggle soft keyboard"), prefs)
             ChoiceSetting("返回键动作", "backButtonAction", listOf("显示键盘" to "toggle soft keyboard", "退出桌面" to "exit", "无动作" to "no action"), prefs)
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = onMorePermissions, modifier = Modifier.fillMaxWidth()) {
-                Text("更多权限")
-            }
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(112.dp))
         }
     }
     }
+}
+
+@Composable
+private fun rememberStringPreference(
+    prefs: SharedPreferences,
+    key: String,
+    default: String,
+): String {
+    var value by remember(prefs, key) {
+        mutableStateOf(prefs.getString(key, default) ?: default)
+    }
+    DisposableEffect(prefs, key) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == key) value = prefs.getString(key, default) ?: default
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    return value
 }
 
 @Composable
@@ -158,11 +173,20 @@ private fun SwitchSetting(
     enabled: Boolean = true
 ) {
     var checked by remember(key) { mutableStateOf(prefs.getBoolean(key, default)) }
+    val press = rememberLiquidPress(RoundedCornerShape(14.dp), scale = 1.012f, strength = 0.45f)
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled) {
-            checked = !checked
-            prefs.edit().putBoolean(key, checked).apply()
-        }.padding(vertical = 3.dp),
+        Modifier
+            .fillMaxWidth()
+            .then(press.modifier)
+            .clickable(
+                interactionSource = press.interaction,
+                indication = null,
+                enabled = enabled,
+            ) {
+                checked = !checked
+                prefs.edit().putBoolean(key, checked).apply()
+            }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked, enabled = enabled, onCheckedChange = {
@@ -185,12 +209,17 @@ private fun ChoiceSetting(
         else option.toString() to option.toString()
     }
     var value by remember(key) { mutableStateOf(prefs.getString(key, options.first().second) ?: options.first().second) }
+    val press = rememberLiquidPress(RoundedCornerShape(14.dp), scale = 1.012f, strength = 0.45f)
     Row(
-        Modifier.fillMaxWidth().clickable {
-            val index = options.indexOfFirst { it.second == value }.coerceAtLeast(0)
-            value = options[(index + 1) % options.size].second
-            prefs.edit().putString(key, value).apply()
-        }.padding(vertical = 13.dp),
+        Modifier
+            .fillMaxWidth()
+            .then(press.modifier)
+            .clickable(interactionSource = press.interaction, indication = null) {
+                val index = options.indexOfFirst { it.second == value }.coerceAtLeast(0)
+                value = options[(index + 1) % options.size].second
+                prefs.edit().putString(key, value).apply()
+            }
+            .padding(horizontal = 12.dp, vertical = 13.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(title, color = XText, fontSize = 15.sp)
@@ -243,14 +272,18 @@ private fun SliderSetting(
 
 private const val DESKTOP_LOG_TAIL_CHARS = 16 * 1024
 
-private fun enforceDesktopAspectDefaults(prefs: SharedPreferences) {
-    if (prefs.getBoolean("doroDesktop16x10V2", false)) return
+private const val NATIVE_DISPLAY_MIGRATION = "doroNativeDisplayV2"
+
+private fun migrateLegacyAspectOverride(prefs: SharedPreferences) {
+    if (prefs.getBoolean(NATIVE_DISPLAY_MIGRATION, false)) return
     prefs.edit()
-        .putString("displayResolutionMode", "custom")
-        .putString("displayResolutionCustom", "1280x800")
+        .putString("displayResolutionMode", "native")
+        .putInt("displayScale", 100)
         .putBoolean("displayStretch", false)
         .putBoolean("adjustResolution", false)
-        .putBoolean("doroDesktop16x10V2", true)
+        .putBoolean("doroDesktopNaturalAspectV1", true)
+        .putBoolean(NATIVE_DISPLAY_MIGRATION, true)
+        .remove("doroDesktop16x10V2")
         .apply()
 }
 
@@ -270,9 +303,16 @@ private fun awaitDesktopProcess(process: Process): Pair<Int, String> {
 fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val runtime = remember { X11RuntimeManager.get(context).runtime as LorieX11Runtime }
-    val container = remember { LinuxContainerManager(context) }
     val prefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(context) }
-    enforceDesktopAspectDefaults(prefs)
+    migrateLegacyAspectOverride(prefs)
+    if (!prefs.getBoolean("doroPhoneKeyboardOnlyV1", false)) {
+        prefs.edit()
+            .putBoolean("showAdditionalKbd", false)
+            .putBoolean("additionalKbdVisible", false)
+            .putBoolean("showIMEWhileExternalConnected", true)
+            .putBoolean("doroPhoneKeyboardOnlyV1", true)
+            .apply()
+    }
     if (!prefs.getBoolean("doroTrueFullscreenV2", false)) {
         prefs.edit()
             .putBoolean("fullscreen", true)
@@ -284,21 +324,57 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
     val activity = context as? MainActivity
     var lorieView by remember { mutableStateOf<LorieView?>(null) }
     var inputController by remember { mutableStateOf<EmbeddedInputController?>(null) }
-    var desktopProcess by remember { mutableStateOf<Process?>(null) }
+    val initialDesktopStatus = remember { LinuxHubDesktopSession.status(context) }
+    var desktopRunning by remember { mutableStateOf(initialDesktopStatus.running) }
     var desktopStarting by remember { mutableStateOf(false) }
+    var desktopFrameReady by remember { mutableStateOf(initialDesktopStatus.firstFrameReady) }
     var serverReady by remember { mutableStateOf(false) }
-    var showBootSplash by remember { mutableStateOf(autoStartDesktop) }
     var error by remember { mutableStateOf<String?>(null) }
+    val desktopScope = rememberCoroutineScope()
+    val desktopLaunchGuard = remember { AtomicBoolean(false) }
+    val errorBackShape = RoundedCornerShape(24.dp)
+    val errorBackPress = rememberLiquidPress(
+        errorBackShape,
+        scale = 1.025f,
+        strength = 0.58f,
+    )
+
+    val launchDesktopSession = {
+        if (autoStartDesktop && desktopLaunchGuard.compareAndSet(false, true)) {
+            desktopStarting = true
+            desktopScope.launch {
+                try {
+                    val process = withContext(Dispatchers.IO) {
+                        LinuxHubDesktopSession.start(context)
+                    }
+                    desktopRunning = process.running
+                    desktopFrameReady = process.firstFrameReady
+                    desktopStarting = false
+                    error = process.lastError
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    desktopStarting = false
+                    desktopLaunchGuard.set(false)
+                    error = failure.message ?: "GNOME桌面启动失败"
+                }
+            }
+        }
+    }
+
+    val showPhoneKeyboard: () -> Unit = {
+        lorieView?.let { view ->
+            view.requestFocus()
+            context.getSystemService(InputMethodManager::class.java)
+                ?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
 
     val handleDesktopBack: () -> Unit = {
         when (prefs.getString("backButtonAction", "toggle soft keyboard")) {
             "exit" -> onBack()
             "no action" -> Unit
-            else -> lorieView?.let { view ->
-                view.requestFocus()
-                context.getSystemService(InputMethodManager::class.java)
-                    ?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-            }
+            else -> showPhoneKeyboard()
         }
     }
 
@@ -308,6 +384,7 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
         try {
             withContext(Dispatchers.IO) { runtime.start() }
             serverReady = true
+            launchDesktopSession()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
@@ -315,36 +392,18 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(autoStartDesktop) {
-        if (autoStartDesktop) {
-            delay(2500)
-            showBootSplash = false
-        }
-    }
-
-    LaunchedEffect(lorieView, serverReady, autoStartDesktop) {
-        if (!autoStartDesktop || !serverReady || lorieView == null || desktopProcess != null || desktopStarting) return@LaunchedEffect
-        desktopStarting = true
-        try {
-            val process = withContext(Dispatchers.IO) {
-                container.startDesktop(runtime.display, prefs.getBoolean("gpuAcceleration", true))
+    LaunchedEffect(Unit) {
+        while (true) {
+            val status = withContext(Dispatchers.IO) { LinuxHubDesktopSession.status(context) }
+            desktopRunning = status.running
+            desktopFrameReady = status.firstFrameReady
+            if (status.stoppedByUser) {
+                desktopLaunchGuard.set(false)
+                onBack()
+                return@LaunchedEffect
             }
-            desktopProcess = process
-            val (exitCode, output) = withContext(Dispatchers.IO) { awaitDesktopProcess(process) }
-            if (desktopProcess === process) {
-                error = if (output.isBlank()) {
-                    "XFCE会话已退出，退出码：$exitCode"
-                } else {
-                    "XFCE会话已退出，退出码：$exitCode\n$output"
-                }
-                desktopProcess = null
-                desktopStarting = false
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Throwable) {
-            desktopStarting = false
-            error = failure.message ?: "XFCE桌面启动失败"
+            if (!status.running && status.lastError != null) error = status.lastError
+            delay(2_000)
         }
     }
 
@@ -404,66 +463,87 @@ fun X11DesktopPage(autoStartDesktop: Boolean, onBack: () -> Unit) {
                 }
             }
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            desktopProcess?.destroy()
-            desktopProcess = null
-            container.stopDesktopServices()
+            desktopLaunchGuard.set(false)
+            runtime.markInputControllerReady(false)
             inputController?.close()
             inputController = null
-            runtime.detachSurface()
+            lorieView?.let(runtime::unbindView)
             lorieView = null
         }
     }
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (error != null) {
-            Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+        when {
+            error != null -> Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(error.orEmpty(), color = Color.White, fontSize = 12.sp)
                 Spacer(Modifier.height(18.dp))
-                Button(onClick = onBack) { Text("返回 LinuxHub") }
+                LiquidGlassSurface(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .then(errorBackPress.modifier),
+                    shape = errorBackShape,
+                    strength = 0.58f,
+                    rimAlpha = 0.66f,
+                    elevation = 5.dp,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = errorBackPress.interaction,
+                                indication = null,
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClick = onBack,
+                            )
+                            .padding(horizontal = 22.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("返回 LinuxHub", color = Color.White)
+                    }
+                }
             }
-        } else if (!serverReady) {
-            Column(
+            !serverReady -> Column(
                 Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("正在启动X11…", color = Color.White, fontSize = 17.sp)
+                Text("正在启动 X11…", color = Color.White, fontSize = 17.sp)
             }
-        } else {
-            AndroidView(
+            !desktopFrameReady -> Column(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    if (desktopStarting) "正在启动 GNOME 桌面…" else "正在等待 GNOME 首帧…",
+                    color = Color.White,
+                    fontSize = 17.sp,
+                )
+            }
+            else -> AndroidView(
                 factory = { ctx ->
                     LorieView(ctx).also { view ->
                         lorieView = view
-                        runCatching {
-                            val hostActivity = requireNotNull(activity) { "X11输入需要Activity宿主" }
-                            inputController = EmbeddedInputController(hostActivity, view)
-                            runtime.bindView(view)
-                            inputController?.reloadPreferences()
-                            view.requestFocus()
-                        }.onFailure { error = it.message ?: "X11 启动失败" }
+                        desktopScope.launch {
+                            runCatching {
+                                val hostActivity = requireNotNull(activity) { "X11输入需要Activity宿主" }
+                                inputController = EmbeddedInputController(hostActivity, view)
+                                runtime.bindView(view, hostActivity)
+                                withContext(Dispatchers.IO) { runtime.connectBoundView() }
+                                runtime.markInputControllerReady(true)
+                                inputController?.reloadPreferences()
+                                view.requestFocus()
+                            }.onFailure {
+                                runtime.markInputControllerReady(false)
+                                error = it.message ?: "X11 画面绑定失败"
+                            }
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
             )
-            if (showBootSplash) UbuntuBootSplash()
         }
-    }
-}
-
-@Composable
-private fun UbuntuBootSplash() {
-    Column(
-        Modifier.fillMaxSize().background(Color.Black),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(com.doro.terminal.shell.R.drawable.ic_ubuntu_large),
-            contentDescription = "Ubuntu",
-            modifier = Modifier.size(112.dp)
-        )
-        Spacer(Modifier.height(22.dp))
-        Text("Ubuntu", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(10.dp))
-        Text("正在启动桌面", color = Color.White.copy(alpha = 0.72f), fontSize = 15.sp)
     }
 }

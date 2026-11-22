@@ -1,0 +1,4 @@
+Command=/usr/local/bin/doro-user-label
+UseLabel=0
+UpdatePeriod=60000
+Text=

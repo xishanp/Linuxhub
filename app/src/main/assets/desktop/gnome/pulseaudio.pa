@@ -1,0 +1,8 @@
+# LinuxHub container audio output.
+#
+# The socket is made user-specific by the session launcher before PulseAudio
+# reads this file. Keep the Android pipe sink fixed: the app binds
+# /run/doro-audio to its private FIFO bridge.
+load-module module-native-protocol-unix socket=@PULSE_SOCKET@ auth-anonymous=1
+load-module module-pipe-sink file=/run/doro-audio/pulse-output.pcm sink_name=doro_android format=s16le rate=44100 channels=2
+set-default-sink doro_android

@@ -1,0 +1,61 @@
+# LinuxHub 2.0 — Ubuntu 24.04 (noble) ARM64 用户应用离线根清单
+#
+# 说明：
+# 1) 本文件的 37 个根包全部进入最终 vendor-apps-arm64.tar。
+# 2) 先由 gnome24 系统包锁定硬件/GNOME/共享依赖，再由：
+#    python3 tools/offline/build_vendor_apps.py
+#    解析本清单的依赖闭包并生成最终应用叠加层。
+# 3) 初始化时系统层先完成；最后统一用 dpkg-deb -x 展开应用文件，
+#    不走 APT 在线源，也不把用户应用登记进 dpkg 数据库。
+# 4) Thunderbird 和 Google Chrome 使用 vendor DEB，与该 TAR 一起携带。
+# 5) xdotool、xinput 仅用于诊断，不进入用户离线包。
+# 6) Firefox 的 noble APT 包是 snap 启动器，不是可用离线浏览器；本包用 Chrome 代替。
+
+# 办公与文档
+libreoffice
+libreoffice-gnome
+libreoffice-style-yaru
+libreoffice-l10n-zh-cn
+libreoffice-help-zh-cn
+evince
+
+# 网络、通讯与文件传输
+remmina
+transmission-gtk
+
+# 影音、图片与扫描
+rhythmbox
+totem
+shotwell
+eog
+gnome-snapshot
+cheese
+simple-scan
+
+# GNOME 桌面应用
+gnome-calculator
+gnome-calendar
+gnome-clocks
+gnome-characters
+gnome-contacts
+gnome-font-viewer
+gnome-logs
+gnome-maps
+gnome-weather
+gnome-tweaks
+
+# 系统工具
+gnome-disk-utility
+gnome-system-monitor
+file-roller
+baobab
+seahorse
+usb-creator-gtk
+
+# Ubuntu 桌面的常用补充应用（非 snap）
+deja-dup
+yelp
+gnome-power-manager
+gnome-remote-desktop
+ubuntu-docs
+orca

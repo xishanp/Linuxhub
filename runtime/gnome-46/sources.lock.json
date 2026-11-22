@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "distribution": "Ubuntu 24.04.4 ARM64",
+  "gnome_series": "46",
+  "source_origin": "https://git.launchpad.net/ubuntu/+source",
+  "components": {
+    "gnome-shell": {
+      "version": "46.0-0ubuntu6~24.04.17",
+      "upstream_branch": "applied/ubuntu/noble-security",
+      "commit": "68f073820b0f68a07669a38b5f2b11a3e89ea928",
+      "downstream_branch": "linuxhub/ubuntu-noble"
+    },
+    "mutter": {
+      "version": "46.2-1ubuntu0.24.04.18",
+      "upstream_branch": "applied/ubuntu/noble-updates",
+      "commit": "70a167ecfb68abda37b525e34d64f3684d4cbdd0",
+      "downstream_branch": "linuxhub/ubuntu-noble"
+    },
+    "gjs": {
+      "version": "1.80.2-1build2",
+      "upstream_branch": "applied/ubuntu/noble",
+      "commit": "bc6f0ab2dca9ccd8252b3258b2f43b1b1711b5ba",
+      "downstream_branch": "linuxhub/ubuntu-noble"
+    }
+  }
+}

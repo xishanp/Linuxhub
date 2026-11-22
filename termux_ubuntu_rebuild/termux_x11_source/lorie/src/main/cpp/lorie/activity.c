@@ -127,8 +127,9 @@ static void nativeInit(JNIEnv *env, jobject thiz) {
 
     (*env)->GetJavaVM(env, &vm);
     (*vm)->AttachCurrentThread(vm, &guienv, NULL);
+    if (globalThiz)
+        (*guienv)->DeleteGlobalRef(guienv, globalThiz);
     globalThiz = (*guienv)->NewGlobalRef(env, thiz);
-    connect_(NULL, NULL, -1);
 }
 
 static int xcallback(int fd, int events, __unused void* data) {
@@ -223,8 +224,10 @@ static int xcallback(int fd, int events, __unused void* data) {
 }
 
 static void connect_(__unused JNIEnv* env, __unused jobject cls, jint fd) {
+    ALooper *looper = ALooper_forThread();
     if (conn_fd != -1) {
-        ALooper_removeFd(ALooper_forThread(), conn_fd);
+        if (looper)
+            ALooper_removeFd(looper, conn_fd);
         close(conn_fd);
         rendererSetSharedState(NULL);
         rendererRemoveAllBuffers();
@@ -232,7 +235,15 @@ static void connect_(__unused JNIEnv* env, __unused jobject cls, jint fd) {
     }
 
     if ((conn_fd = fd) != -1) {
-        ALooper_addFd(ALooper_forThread(), fd, 0, ALOOPER_EVENT_INPUT | ALOOPER_EVENT_ERROR | ALOOPER_EVENT_HANGUP, xcallback, NULL);
+        if (!looper) {
+            // LorieView.connect() may only run on a thread with an Android Looper.
+            // Failing here is recoverable; passing a null ALooper used to abort the process.
+            log(ERROR, "X11 renderer connection attempted without a thread Looper");
+            close(conn_fd);
+            conn_fd = -1;
+            return;
+        }
+        ALooper_addFd(looper, fd, 0, ALOOPER_EVENT_INPUT | ALOOPER_EVENT_ERROR | ALOOPER_EVENT_HANGUP, xcallback, NULL);
 
         // Give the X server our renderer wakeup cond var fd, resent on every reconnect.
         lorieEvent e = { .type = EVENT_RENDERER_WAKEUP_COND };
@@ -292,6 +303,10 @@ static void sendClipboardEvent(JNIEnv *env, __unused jobject thiz, jbyteArray te
     }
 }
 
+static void setContinuousFrames(__unused JNIEnv* env, __unused jclass cls, jboolean enabled) {
+    lorieSetContinuousFrames(enabled ? 1 : 0);
+}
+
 static void sendWindowChange(__unused JNIEnv* env, __unused jobject cls, jint width, jint height, jint framerate, jstring jname) {
     if (conn_fd != -1) {
         const char *name = (!jname || width <= 0 || height <= 0) ? NULL : (*env)->GetStringUTFChars(env, jname, JNI_FALSE);
@@ -308,7 +323,8 @@ static void sendMouseEvent(__unused JNIEnv* env, __unused jobject cls, jfloat x,
     if (conn_fd != -1) {
         if (which_button > 0)
             (*env)->CallVoidMethod(env, globalThiz, MainActivity.resetIme);
-        lorieEvent e = { .mouse = { .t = EVENT_MOUSE, .x = x, .y = y, .detail = which_button, .down = button_down, .relative = relative } };
+        lorieEvent e = { .mouse = { .t = EVENT_MOUSE, .x = x, .y = y, .detail = which_button,
+                                    .down = button_down, .relative = relative } };
         write(conn_fd, &e, sizeof(e));
     }
 }
@@ -388,17 +404,22 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, __unused void *reserved) {
     JNIEnv* env;
     static JNINativeMethod methods[] = {
             {"nativeInit", "()V", (void *)&nativeInit},
-            {"surfaceChanged", "(Landroid/view/Surface;)V", (void *)&rendererSetWindow},
+            {"surfaceChanged", "(Landroid/view/Surface;II)V", (void *)&rendererSetWindow},
             {"setViewport", "(IIIIII)V", (void *)&rendererSetViewport},
             {"setRendererZoom", "(I)V", (void *)&rendererSetZoom},
             {"setFiltering", "(I)V", (void *)&rendererSetFiltering},
             {"connect", "(I)V", (void *)&connect_},
             {"connected", "()Z", (void *)&connected},
+            {"captureFrameWidth", "()I", (void *)&rendererGetFrameWidth},
+            {"captureFrameHeight", "()I", (void *)&rendererGetFrameHeight},
+            {"captureFrameSize", "()J", (void *)&rendererGetFrameSize},
+            {"captureFrameNative", "(Landroid/graphics/Bitmap;)Z", (void *)&rendererCaptureFrame},
             {"startLogcat", "(I)V", (void *)&startLogcat},
             {"setClipboardSyncEnabled", "(ZZ)V", (void *)&setClipboardSyncEnabled},
             {"sendClipboardAnnounce", "()V", (void *)&sendClipboardAnnounce},
             {"sendClipboardEvent", "([B)V", (void *)&sendClipboardEvent},
             {"sendWindowChange", "(IIILjava/lang/String;)V", (void *)&sendWindowChange},
+            {"setContinuousFrames", "(Z)V", (void *)&setContinuousFrames},
             {"sendMouseEvent", "(FFIZZ)V", (void *)&sendMouseEvent},
             {"sendTouchEvent", "(IIII)V", (void *)&sendTouchEvent},
             {"sendStylusEvent", "(FFIIIIIZZ)V", (void *)&sendStylusEvent},

@@ -1,0 +1,13 @@
+{
+  "parentMode": "user",
+  "stylesheetName": "Yaru/gnome-shell.css",
+  "colorScheme": "prefer-light",
+  "themeResourceName": "theme/Yaru/gnome-shell-theme.gresource",
+  "iconsResourceName": "theme/Yaru/gnome-shell-icons.gresource",
+  "enabledExtensions": [
+    "ubuntu-dock@ubuntu.com",
+    "ubuntu-appindicators@ubuntu.com",
+    "ding@rastersoft.com",
+    "tiling-assistant@ubuntu.com"
+  ]
+}

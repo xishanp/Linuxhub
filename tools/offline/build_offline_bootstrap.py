@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Resolve and build LinuxHub's single offline Ubuntu arm64 package pool.
+"""Resolve LinuxHub's offline Ubuntu arm64 package pools.
 
-`package-roots.txt` is the only manually maintained package list. All package
-versions and transitive dependencies come from the pinned Ubuntu 24.04 arm64
-indices and are recorded in `offline-bootstrap.lock.json`.
+The GNOME profiles contain the hardware and system layer only. User-facing
+desktop applications are resolved separately by ``build_vendor_apps.py`` and
+installed from the final vendor archive. All package versions and transitive
+dependencies come from the pinned Ubuntu arm64 indices and are recorded in a
+profile lock file.
 
 The generated TAR is an artifact cache plus the exact dpkg install manifest.
 Existing offline TARs are read only as a download cache: a cached DEB is reused
@@ -32,18 +34,31 @@ BOOTSTRAP_ASSET = OFFLINE_ASSETS / "bootstrap-arm64.tar"
 BOOTSTRAP_LIST = OFFLINE_ASSETS / "bootstrap-packages.txt"
 ROOTS_FILE = ROOT / "tools/offline/package-roots.txt"
 LOCK_FILE = ROOT / "tools/offline/offline-bootstrap.lock.json"
+GNOME24_ROOTFS_ASSET = ROOT / "app/src/main/assets/rootfs/ubuntu-base-24.04.4-base-arm64.tar"
+GNOME24_ASSET = OFFLINE_ASSETS / "gnome-24.04-arm64.tar"
+GNOME24_LIST = OFFLINE_ASSETS / "gnome-packages.txt"
+GNOME24_ROOTS_FILE = ROOT / "tools/offline/package-roots-ubuntu-gnome.txt"
+GNOME24_LOCK_FILE = ROOT / "tools/offline/offline-gnome.lock.json"
+GNOME_ROOTFS_ASSET = ROOT / "app/src/main/assets/rootfs/ubuntu-base-26.04.1-base-arm64.tar.gz"
+GNOME_ASSET = OFFLINE_ASSETS / "gnome-26.04-arm64.tar"
+GNOME_LIST = OFFLINE_ASSETS / "gnome-packages-26.04.txt"
+GNOME_ROOTS_FILE = ROOT / "tools/offline/package-roots-ubuntu-26.04-gnome.txt"
+GNOME_LOCK_FILE = ROOT / "tools/offline/offline-gnome-26.04.lock.json"
 CACHE_DIR = ROOT / ".cache/offline"
 INDEX_DIR = CACHE_DIR / "indices"
 DEB_DIR = CACHE_DIR / "bootstrap-debs"
 EXTRACTED_DIR = CACHE_DIR / "bootstrap-packages"
 
 MIRROR = "https://ports.ubuntu.com/ubuntu-ports"
+FALLBACK_MIRRORS: list[str] = []
 SUITES = ("noble", "noble-updates", "noble-security")
 COMPONENTS = ("main", "universe", "restricted", "multiverse")
 SUITE_PRIORITY = {"noble-security": 4, "noble-updates": 3, "noble": 2}
 COMPONENT_PRIORITY = {"main": 4, "restricted": 3, "universe": 2, "multiverse": 1}
 CACHE_LAYERS = (
     "bootstrap-arm64.tar",
+    "gnome-24.04-arm64.tar",
+    "gnome-26.04-arm64.tar",
     "system-base-arm64.tar",
     "system-tools-arm64.tar",
     "cli-extra-arm64.tar",
@@ -64,7 +79,7 @@ class Package:
     pre_depends: tuple[tuple[tuple[str, str | None, str | None], ...], ...]
     suite: str
     component: str
-    provides: tuple[str, ...]
+    provides: tuple[tuple[str, str | None], ...]
     source: str = "repository"
 
     @property
@@ -92,27 +107,46 @@ def download(url: str, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.is_file() and target.stat().st_size > 0:
         return
+
+    relative = None
+    if url.startswith(MIRROR + "/"):
+        relative = url[len(MIRROR) + 1 :]
+    urls = [url]
+    if relative:
+        urls.extend(f"{mirror}/{relative}" for mirror in FALLBACK_MIRRORS)
+
     temporary = target.with_name(target.name + ".part")
-    subprocess.run(
-        [
-            "curl",
-            "-fL",
-            "--retry",
-            "5",
-            "--retry-all-errors",
-            "--connect-timeout",
-            "20",
-            "--speed-time",
-            "30",
-            "--speed-limit",
-            "1024",
-            "-o",
-            str(temporary),
-            url,
-        ],
-        check=True,
-    )
-    temporary.replace(target)
+    errors = []
+    for candidate in dict.fromkeys(urls):
+        temporary.unlink(missing_ok=True)
+        try:
+            subprocess.run(
+                [
+                    "curl",
+                    "-fL",
+                    "--retry",
+                    "3",
+                    "--retry-all-errors",
+                    "--connect-timeout",
+                    "20",
+                    "--speed-time",
+                    "30",
+                    "--speed-limit",
+                    "1024",
+                    "--user-agent",
+                    "LinuxHubOfflineBuilder/2.0",
+                    "-o",
+                    str(temporary),
+                    candidate,
+                ],
+                check=True,
+            )
+            temporary.replace(target)
+            return
+        except subprocess.CalledProcessError as exc:
+            errors.append(f"{candidate}: {exc}")
+    temporary.unlink(missing_ok=True)
+    raise SystemExit("download failed after mirror fallback:\n" + "\n".join(errors))
 
 
 def parse_blocks(text: str):
@@ -151,6 +185,20 @@ def parse_dependencies(value: str):
     return tuple(groups)
 
 
+def parse_provides(value: str) -> tuple[tuple[str, str | None], ...]:
+    provided = []
+    for raw in value.split(","):
+        match = re.match(
+            r"([A-Za-z0-9+_.:-]+)(?:\s*\(\s*=\s*([^)]+)\))?",
+            raw.strip(),
+        )
+        if match:
+            provided.append(
+                (match.group(1).split(":", 1)[0], match.group(2))
+            )
+    return tuple(provided)
+
+
 def package_from_fields(fields: dict[str, str], *, suite: str, component: str) -> Package:
     name = fields.get("Package")
     version = fields.get("Version")
@@ -168,11 +216,7 @@ def package_from_fields(fields: dict[str, str], *, suite: str, component: str) -
         pre_depends=parse_dependencies(fields.get("Pre-Depends", "")),
         suite=suite,
         component=component,
-        provides=tuple(
-            item.strip().split()[0].split(":", 1)[0]
-            for item in fields.get("Provides", "").split(",")
-            if item.strip()
-        ),
+        provides=parse_provides(fields.get("Provides", "")),
     )
 
 
@@ -200,7 +244,7 @@ def load_indices():
     providers: dict[str, list[Package]] = {}
     for package in packages:
         by_name.setdefault(package.name, []).append(package)
-        for provided in package.provides:
+        for provided, _ in package.provides:
             providers.setdefault(provided, []).append(package)
     for values in list(by_name.values()) + list(providers.values()):
         values.sort(key=lambda item: item.candidate_priority, reverse=True)
@@ -217,12 +261,15 @@ def deb_parts(basename: str):
     return parts[0].split(":", 1)[0], parts[1].split(":", 1)[-1]
 
 
-def read_roots() -> list[str]:
+def read_roots(extra_files: tuple[Path, ...] = ()) -> list[str]:
     roots = []
-    for line in ROOTS_FILE.read_text().splitlines():
-        name = line.split("#", 1)[0].strip()
-        if name:
-            roots.append(name)
+    seen = set()
+    for roots_file in (ROOTS_FILE, *extra_files):
+        for line in roots_file.read_text().splitlines():
+            name = line.split("#", 1)[0].strip()
+            if name and name not in seen:
+                roots.append(name)
+                seen.add(name)
     return roots
 
 
@@ -264,11 +311,7 @@ def read_rootfs_status() -> dict[str, Package]:
             pre_depends=parse_dependencies(fields.get("Pre-Depends", "")),
             suite="rootfs",
             component="rootfs",
-            provides=tuple(
-                item.strip().split()[0].split(":", 1)[0]
-                for item in fields.get("Provides", "").split(",")
-                if item.strip()
-            ),
+            provides=parse_provides(fields.get("Provides", "")),
             source="rootfs",
         )
     return installed
@@ -287,14 +330,32 @@ def satisfies(version: str, operator: str | None, wanted: str | None) -> bool:
     }[operator]
 
 
+def package_matches_dependency(
+    package: Package,
+    name: str,
+    operator: str | None,
+    wanted: str | None,
+) -> bool:
+    if package.name == name and satisfies(package.version, operator, wanted):
+        return True
+    for provided, provided_version in package.provides:
+        if provided != name:
+            continue
+        if not operator:
+            return True
+        if provided_version is not None and satisfies(
+            provided_version, operator, wanted
+        ):
+            return True
+    return False
+
+
 def matching_selected(
     selected: dict[str, Package], name: str, operator: str | None, wanted: str | None
 ):
-    package = selected.get(name)
-    if package and satisfies(package.version, operator, wanted):
-        return package
-    for candidate in selected.values():
-        if name in candidate.provides and satisfies(candidate.version, operator, wanted):
+    candidates = sorted(selected.values(), key=lambda item: (item.name != name, item.name))
+    for candidate in candidates:
+        if package_matches_dependency(candidate, name, operator, wanted):
             return candidate
     return None
 
@@ -302,11 +363,9 @@ def matching_selected(
 def matching_installed(
     installed: dict[str, Package], name: str, operator: str | None, wanted: str | None
 ):
-    package = installed.get(name)
-    if package and satisfies(package.version, operator, wanted):
-        return package
-    for candidate in installed.values():
-        if name in candidate.provides and satisfies(candidate.version, operator, wanted):
+    candidates = sorted(installed.values(), key=lambda item: (item.name != name, item.name))
+    for candidate in candidates:
+        if package_matches_dependency(candidate, name, operator, wanted):
             return candidate
     return None
 
@@ -317,8 +376,11 @@ def choose_repository(
     providers: dict[str, list[Package]],
 ):
     for name, operator, wanted in alternatives:
-        for candidate in by_name.get(name) or providers.get(name, []):
-            if satisfies(candidate.version, operator, wanted):
+        for candidate in by_name.get(name, []):
+            if package_matches_dependency(candidate, name, operator, wanted):
+                return candidate
+        for candidate in providers.get(name, []):
+            if package_matches_dependency(candidate, name, operator, wanted):
                 return candidate
     return None
 
@@ -359,7 +421,66 @@ def resolve(
                 selected[chosen.name] = chosen
                 dependencies.add(chosen.name)
                 queue.append(chosen.name)
+    repair_dependencies, repair_unresolved = upgrade_inconsistent_installed(
+        selected, installed, by_name, providers
+    )
+    dependencies.update(repair_dependencies)
+    unresolved.extend(repair_unresolved)
     return selected, dependencies, unresolved
+
+
+def dependencies_satisfied(package: Package, state: dict[str, Package]) -> bool:
+    for alternatives in package.pre_depends + package.depends:
+        if not any(
+            package_matches_dependency(candidate, name, operator, wanted)
+            for name, operator, wanted in alternatives
+            for candidate in state.values()
+        ):
+            return False
+    return True
+
+
+def upgrade_inconsistent_installed(
+    selected: dict[str, Package],
+    installed: dict[str, Package],
+    by_name: dict[str, list[Package]],
+    providers: dict[str, list[Package]],
+):
+    """Upgrade installed packages invalidated by a selected version change.
+
+    An installed package can have an exact dependency on a package that the
+    profile upgrades (for example, libgcc-s1 pins gcc-14-base). Reusing that
+    installed package would leave APT in an inconsistent state even though
+    dpkg itself audits cleanly.
+    """
+    dependencies: set[str] = set()
+    unresolved: list[tuple[str, tuple[tuple[str, str | None, str | None], ...]]] = []
+    while True:
+        state = dict(installed)
+        state.update(selected)
+        inconsistent = [
+            package
+            for name, package in installed.items()
+            if name not in selected and not dependencies_satisfied(package, state)
+        ]
+        if not inconsistent:
+            return dependencies, unresolved
+
+        progressed = False
+        for package in sorted(inconsistent, key=lambda item: item.name):
+            candidate = choose_repository(
+                ((package.name, None, None),), by_name, providers
+            )
+            if candidate is None:
+                unresolved.append(
+                    (package.name, ((package.name, None, None),))
+                )
+                continue
+            selected[package.name] = candidate
+            dependencies.add(package.name)
+            progressed = True
+        if not progressed:
+            return dependencies, unresolved
 
 
 def read_member(location: Location) -> bytes:
@@ -394,6 +515,18 @@ def materialize(
     return target
 
 
+def package_dependency_names(package: Package, packages: dict[str, Package]) -> set[str]:
+    result: set[str] = set()
+    for groups in (package.pre_depends, package.depends):
+        for alternatives in groups:
+            for name, operator, wanted in alternatives:
+                dependency = matching_selected(packages, name, operator, wanted)
+                if dependency is not None:
+                    result.add(dependency.name)
+                    break
+    return result
+
+
 def topological_order(packages: dict[str, Package]) -> list[Package]:
     ordered: list[Package] = []
     temporary: set[str] = set()
@@ -403,12 +536,8 @@ def topological_order(packages: dict[str, Package]) -> list[Package]:
         if package.name in permanent or package.name in temporary:
             return
         temporary.add(package.name)
-        for alternatives in package.pre_depends + package.depends:
-            for name, operator, wanted in alternatives:
-                dependency = packages.get(name)
-                if dependency and satisfies(dependency.version, operator, wanted):
-                    visit(dependency)
-                    break
+        for dependency_name in sorted(package_dependency_names(package, packages)):
+            visit(packages[dependency_name])
         temporary.remove(package.name)
         permanent.add(package.name)
         ordered.append(package)
@@ -416,6 +545,88 @@ def topological_order(packages: dict[str, Package]) -> list[Package]:
     for package in sorted(packages.values(), key=lambda value: value.name):
         visit(package)
     return ordered
+
+
+def strongly_connected_components(packages: dict[str, Package]) -> list[list[str]]:
+    graph = {
+        name: sorted(package_dependency_names(package, packages))
+        for name, package in packages.items()
+    }
+    indices: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[list[str]] = []
+    next_index = 0
+
+    def visit(name: str) -> None:
+        nonlocal next_index
+        indices[name] = next_index
+        lowlinks[name] = next_index
+        next_index += 1
+        stack.append(name)
+        on_stack.add(name)
+        for dependency in graph[name]:
+            if dependency not in indices:
+                visit(dependency)
+                lowlinks[name] = min(lowlinks[name], lowlinks[dependency])
+            elif dependency in on_stack:
+                lowlinks[name] = min(lowlinks[name], indices[dependency])
+        if lowlinks[name] == indices[name]:
+            component: list[str] = []
+            while True:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == name:
+                    break
+            components.append(sorted(component))
+
+    for name in sorted(packages):
+        if name not in indices:
+            visit(name)
+    return components
+
+
+def dependency_batches(packages: dict[str, Package]) -> list[list[Package]]:
+    """Group packages into installable layers.
+
+    A batch contains no dependency edge between its members, except for a
+    strongly connected cycle which must be installed together. Every external
+    dependency of a batch is already installed and configured by an earlier
+    batch. This makes ``dpkg -i`` safe for Pre-Depends and normal Depends.
+    """
+    components = strongly_connected_components(packages)
+    component_of = {
+        name: component_index
+        for component_index, component in enumerate(components)
+        for name in component
+    }
+    component_dependencies: list[set[int]] = [set() for _ in components]
+    for name, package in packages.items():
+        owner = component_of[name]
+        for dependency in package_dependency_names(package, packages):
+            dependency_owner = component_of[dependency]
+            if dependency_owner != owner:
+                component_dependencies[owner].add(dependency_owner)
+
+    remaining = set(range(len(components)))
+    batches: list[list[Package]] = []
+    while remaining:
+        ready = [
+            index for index in sorted(remaining)
+            if not (component_dependencies[index] & remaining)
+        ]
+        if not ready:
+            raise SystemExit("dependency graph contains an unschedulable component cycle")
+        names = sorted(
+            name
+            for index in ready
+            for name in components[index]
+        )
+        batches.append([packages[name] for name in names])
+        remaining.difference_update(ready)
+    return batches
 
 
 def write_tar(packages: list[Package], paths: dict[str, Path]) -> None:
@@ -450,11 +661,56 @@ def dependency_json(groups):
 
 
 def main() -> None:
+    global BOOTSTRAP_ASSET, BOOTSTRAP_LIST, ROOTS_FILE, LOCK_FILE
+    global ROOTFS_ASSET, SUITES, SUITE_PRIORITY, MIRROR, FALLBACK_MIRRORS
+    extra_roots_files: tuple[Path, ...] = ()
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--profile",
+        choices=("bootstrap", "gnome24", "gnome"),
+        default="bootstrap",
+        help="select the package profile and its isolated lock/list/tar outputs",
+    )
     parser.add_argument("--rebuild-tar", action="store_true")
+    parser.add_argument(
+        "--mirror",
+        default=MIRROR,
+        help="Ubuntu ports mirror base URL; package SHA-256 values remain authoritative",
+    )
+    parser.add_argument(
+        "--fallback-mirror",
+        action="append",
+        default=[],
+        help="fallback Ubuntu ports mirror base URL; may be repeated",
+    )
     args = parser.parse_args()
+    MIRROR = args.mirror.rstrip("/")
+    FALLBACK_MIRRORS = [mirror.rstrip("/") for mirror in args.fallback_mirror]
 
-    root_names = read_roots()
+    if args.profile == "gnome24":
+        BOOTSTRAP_ASSET = GNOME24_ASSET
+        BOOTSTRAP_LIST = GNOME24_LIST
+        ROOTS_FILE = GNOME24_ROOTS_FILE
+        LOCK_FILE = GNOME24_LOCK_FILE
+        ROOTFS_ASSET = GNOME24_ROOTFS_ASSET
+        extra_roots_files = ()
+    elif args.profile == "gnome":
+        BOOTSTRAP_ASSET = GNOME_ASSET
+        BOOTSTRAP_LIST = GNOME_LIST
+        ROOTS_FILE = GNOME_ROOTS_FILE
+        LOCK_FILE = GNOME_LOCK_FILE
+        ROOTFS_ASSET = GNOME_ROOTFS_ASSET
+        SUITES = ("resolute", "resolute-updates", "resolute-security")
+        SUITE_PRIORITY = {
+            "resolute-security": 4,
+            "resolute-updates": 3,
+            "resolute": 2,
+        }
+
+    print(f"mirror={MIRROR}")
+    if FALLBACK_MIRRORS:
+        print(f"fallback_mirrors={','.join(FALLBACK_MIRRORS)}")
+    root_names = read_roots(extra_roots_files)
     by_name, providers = load_indices()
     missing_metadata = [name for name in root_names if name not in by_name]
     if missing_metadata:
@@ -491,24 +747,39 @@ def main() -> None:
                 "component": package.component,
                 "depends": dependency_json(package.depends),
                 "pre_depends": dependency_json(package.pre_depends),
+                "provides": [list(item) for item in package.provides],
             }
         )
     lock = {
         "schema": 1,
+        "profile": args.profile,
         "distribution": "ubuntu",
-        "release": "24.04",
+        "release": "26.04" if args.profile == "gnome" else "24.04",
+        "codename": "resolute" if args.profile == "gnome" else "noble",
         "architecture": "arm64",
         "roots_file": str(ROOTS_FILE.relative_to(ROOT)),
+        "extra_roots_files": [str(path.relative_to(ROOT)) for path in extra_roots_files],
         "root_count": len(roots),
         "package_count": len(required),
         "packages": records,
     }
     LOCK_FILE.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n")
+    packages = {name: selected[name] for name in required}
+    ordered = topological_order(packages)
+    batches = dependency_batches(packages)
+    manifest_names = {
+        name: Path(package.filename).name for name, package in packages.items()
+    }
+    BOOTSTRAP_LIST.write_text(
+        "\n\n".join(
+            "\n".join(manifest_names[package.name] for package in batch)
+            for batch in batches
+        ) + "\n"
+    )
+    print(f"install_batches={len(batches)}")
     if not args.rebuild_tar:
         return
 
-    packages = {name: selected[name] for name in required}
-    ordered = topological_order(packages)
     paths = {
         package.name: materialize(
             package,
@@ -517,7 +788,6 @@ def main() -> None:
         for package in ordered
     }
     write_tar(ordered, paths)
-    BOOTSTRAP_LIST.write_text("\n".join(paths[item.name].name for item in ordered) + "\n")
     digest = hashlib.sha256(BOOTSTRAP_ASSET.read_bytes()).hexdigest()
     print(f"asset={BOOTSTRAP_ASSET.relative_to(ROOT)}")
     print(f"size={BOOTSTRAP_ASSET.stat().st_size}")

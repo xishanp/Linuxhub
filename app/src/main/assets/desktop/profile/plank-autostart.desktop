@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Plank
+Exec=/usr/local/bin/doro-start-plank
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

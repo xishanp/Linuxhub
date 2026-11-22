@@ -4,8 +4,8 @@
   "release": "24.04",
   "architecture": "arm64",
   "roots_file": "tools/offline/package-roots.txt",
-  "root_count": 503,
-  "package_count": 583,
+  "root_count": 518,
+  "package_count": 598,
   "packages": [
     {
       "package": "adduser",
@@ -1062,6 +1062,39 @@
             "libx11-6",
             null,
             null
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
+      "package": "dconf-cli",
+      "version": "0.40.0-4ubuntu0.1",
+      "architecture": "arm64",
+      "sha256": "78333bbe26455f245e1468e1de81c6d0b7c1ad76f3504dcc1aae91ae1cbcd467",
+      "repository_path": "pool/main/d/dconf/dconf-cli_0.40.0-4ubuntu0.1_arm64.deb",
+      "suite": "noble-updates",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "libdconf1",
+            "=",
+            "0.40.0-4ubuntu0.1"
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.34"
+          ]
+        ],
+        [
+          [
+            "libglib2.0-0t64",
+            ">=",
+            "2.44.0"
           ]
         ]
       ],
@@ -2641,6 +2674,17 @@
       "architecture": "all",
       "sha256": "8a599d6553307db7ecb795d2f0e5a301e03234afc75c7358b0ba43466454c89a",
       "repository_path": "pool/main/f/fonts-dejavu/fonts-dejavu-mono_2.37-8_all.deb",
+      "suite": "noble",
+      "component": "main",
+      "depends": [],
+      "pre_depends": []
+    },
+    {
+      "package": "fonts-liberation",
+      "version": "1:2.1.5-3",
+      "architecture": "all",
+      "sha256": "065c2ab1abc9108b17d401016dc594b79750904390f095845c93bb06e1153acc",
+      "repository_path": "pool/main/f/fonts-liberation/fonts-liberation_2.1.5-3_all.deb",
       "suite": "noble",
       "component": "main",
       "depends": [],
@@ -4253,6 +4297,135 @@
       "pre_depends": []
     },
     {
+      "package": "language-pack-gnome-zh-hans",
+      "version": "1:24.04+20260905",
+      "architecture": "all",
+      "sha256": "673bd0674cd3a8f6f6f5b444e42aa2b60213fc61b611aff77049d2f261365a12",
+      "repository_path": "pool/main/l/language-pack-gnome-zh-hans/language-pack-gnome-zh-hans_24.04+20260905_all.deb",
+      "suite": "noble-updates",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "language-pack-gnome-zh-hans-base",
+            ">=",
+            "1:24.04+20260905"
+          ]
+        ],
+        [
+          [
+            "language-pack-zh-hans",
+            null,
+            null
+          ]
+        ]
+      ],
+      "pre_depends": [
+        [
+          [
+            "dpkg",
+            ">=",
+            "1.16.1"
+          ]
+        ]
+      ]
+    },
+    {
+      "package": "language-pack-gnome-zh-hans-base",
+      "version": "1:24.04+20260905",
+      "architecture": "all",
+      "sha256": "1f4e1bf34ae3c598862d7735c09f07dc06dcf53d8ade6392ef9e53930ce99369",
+      "repository_path": "pool/main/l/language-pack-gnome-zh-hans-base/language-pack-gnome-zh-hans-base_24.04+20260905_all.deb",
+      "suite": "noble-updates",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "locales",
+            ">=",
+            "2.3.6"
+          ]
+        ],
+        [
+          [
+            "language-pack-gnome-zh-hans",
+            ">=",
+            "1:24.04+20260905"
+          ]
+        ]
+      ],
+      "pre_depends": [
+        [
+          [
+            "dpkg",
+            ">=",
+            "1.16.1"
+          ]
+        ]
+      ]
+    },
+    {
+      "package": "language-pack-zh-hans",
+      "version": "1:24.04+20260905",
+      "architecture": "all",
+      "sha256": "4ffaac6bf9055d06e4b588bae2569ffe18c06c9649c691b4d6974e1c10dd811f",
+      "repository_path": "pool/main/l/language-pack-zh-hans/language-pack-zh-hans_24.04+20260905_all.deb",
+      "suite": "noble-updates",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "language-pack-zh-hans-base",
+            ">=",
+            "1:24.04+20260905"
+          ]
+        ]
+      ],
+      "pre_depends": [
+        [
+          [
+            "dpkg",
+            ">=",
+            "1.16.1"
+          ]
+        ]
+      ]
+    },
+    {
+      "package": "language-pack-zh-hans-base",
+      "version": "1:24.04+20260905",
+      "architecture": "all",
+      "sha256": "476112d5cb3bc16a761e3d490df61509e1a9e9852937cf9360cfd2f572c25895",
+      "repository_path": "pool/main/l/language-pack-zh-hans-base/language-pack-zh-hans-base_24.04+20260905_all.deb",
+      "suite": "noble-updates",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "locales",
+            ">=",
+            "2.3.6"
+          ]
+        ],
+        [
+          [
+            "language-pack-zh-hans",
+            ">=",
+            "1:24.04+20260905"
+          ]
+        ]
+      ],
+      "pre_depends": [
+        [
+          [
+            "dpkg",
+            ">=",
+            "1.16.1"
+          ]
+        ]
+      ]
+    },
+    {
       "package": "less",
       "version": "590-2ubuntu2.1",
       "architecture": "arm64",
@@ -4898,6 +5071,32 @@
             "at-spi2-common",
             null,
             null
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
+      "package": "libatomic1",
+      "version": "14.2.0-4ubuntu2~24.04.1",
+      "architecture": "arm64",
+      "sha256": "fdeab74e7ad8572cf69c7024e8040c7ac851f6e667d35f0d429e7a0352840f73",
+      "repository_path": "pool/main/g/gcc-14/libatomic1_14.2.0-4ubuntu2~24.04.1_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "gcc-14-base",
+            "=",
+            "14.2.0-4ubuntu2~24.04.1"
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.17"
           ]
         ]
       ],
@@ -8349,6 +8548,32 @@
       "pre_depends": []
     },
     {
+      "package": "libgcc-s1",
+      "version": "14.2.0-4ubuntu2~24.04.1",
+      "architecture": "arm64",
+      "sha256": "5b191f79ad985a9a653dbba45214619f729f9178a9bdf92f7c68db06c50d070b",
+      "repository_path": "pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "gcc-14-base",
+            "=",
+            "14.2.0-4ubuntu2~24.04.1"
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.35"
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
       "package": "libgck-2-2",
       "version": "4.2.0-5",
       "architecture": "arm64",
@@ -8869,6 +9094,57 @@
           ]
         ]
       ],
+      "pre_depends": []
+    },
+    {
+      "package": "libglib2.0-bin",
+      "version": "2.80.0-6ubuntu3.9",
+      "architecture": "arm64",
+      "sha256": "3470c1a342b45ac3241640f139f6467ec36e327b7c98cdaa0c35fbf814579c0b",
+      "repository_path": "pool/main/g/glib2.0/libglib2.0-bin_2.80.0-6ubuntu3.9_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "libglib2.0-data",
+            null,
+            null
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.38"
+          ]
+        ],
+        [
+          [
+            "libelf1t64",
+            ">=",
+            "0.142"
+          ]
+        ],
+        [
+          [
+            "libglib2.0-0t64",
+            "=",
+            "2.80.0-6ubuntu3.9"
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
+      "package": "libglib2.0-data",
+      "version": "2.80.0-6ubuntu3.9",
+      "architecture": "all",
+      "sha256": "87b6c824ce057baed1144474640e083f167096453393f93727f8d3a1d75a2707",
+      "repository_path": "pool/main/g/glib2.0/libglib2.0-data_2.80.0-6ubuntu3.9_all.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [],
       "pre_depends": []
     },
     {
@@ -12328,6 +12604,32 @@
       "pre_depends": []
     },
     {
+      "package": "libncursesw6",
+      "version": "6.4+20240113-1ubuntu2.2",
+      "architecture": "arm64",
+      "sha256": "70c7edddf49520a7d0e620ad7d82da8e4b8c2ba7bd8caf156d5666ea19836e94",
+      "repository_path": "pool/main/n/ncurses/libncursesw6_6.4+20240113-1ubuntu2.2_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "libtinfo6",
+            "=",
+            "6.4+20240113-1ubuntu2.2"
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.34"
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
       "package": "libndp0",
       "version": "1.8-1fakesync1ubuntu0.24.04.1",
       "architecture": "arm64",
@@ -14800,6 +15102,39 @@
       "pre_depends": []
     },
     {
+      "package": "librsvg2-common",
+      "version": "2.58.0+dfsg-1ubuntu0.1",
+      "architecture": "arm64",
+      "sha256": "16d24385bb6a1a32f9a44b28ba8b2ce8b0557954d7b9187a8d54391c8ef98cbe",
+      "repository_path": "pool/main/libr/librsvg/librsvg2-common_2.58.0+dfsg-1ubuntu0.1_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "librsvg2-2",
+            "=",
+            "2.58.0+dfsg-1ubuntu0.1"
+          ]
+        ],
+        [
+          [
+            "libgdk-pixbuf-2.0-0",
+            ">=",
+            "2.23.5-2"
+          ]
+        ],
+        [
+          [
+            "libglib2.0-0t64",
+            ">=",
+            "2.50.0"
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
       "package": "librtmp1",
       "version": "2.4+20151223.gitfa8646d.1-2build7",
       "architecture": "arm64",
@@ -15693,6 +16028,39 @@
             "libxcb1",
             null,
             null
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
+      "package": "libstdc++6",
+      "version": "14.2.0-4ubuntu2~24.04.1",
+      "architecture": "arm64",
+      "sha256": "f84a05ac45a6884109b6527e911081a38263b89e042fc94a338cf975f61a330c",
+      "repository_path": "pool/main/g/gcc-14/libstdc++6_14.2.0-4ubuntu2~24.04.1_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "gcc-14-base",
+            "=",
+            "14.2.0-4ubuntu2~24.04.1"
+          ]
+        ],
+        [
+          [
+            "libc6",
+            ">=",
+            "2.38"
+          ]
+        ],
+        [
+          [
+            "libgcc-s1",
+            ">=",
+            "4.5"
           ]
         ]
       ],
@@ -23454,6 +23822,67 @@
       "pre_depends": []
     },
     {
+      "package": "wget",
+      "version": "1.21.4-1ubuntu4.5",
+      "architecture": "arm64",
+      "sha256": "ed71643b8873240cce1ac905b7993f3372436d39410894f413968f43839f84e6",
+      "repository_path": "pool/main/w/wget/wget_1.21.4-1ubuntu4.5_arm64.deb",
+      "suite": "noble-security",
+      "component": "main",
+      "depends": [
+        [
+          [
+            "libc6",
+            ">=",
+            "2.38"
+          ]
+        ],
+        [
+          [
+            "libidn2-0",
+            ">=",
+            "0.6"
+          ]
+        ],
+        [
+          [
+            "libpcre2-8-0",
+            ">=",
+            "10.22"
+          ]
+        ],
+        [
+          [
+            "libpsl5t64",
+            ">=",
+            "0.16.0"
+          ]
+        ],
+        [
+          [
+            "libssl3t64",
+            ">=",
+            "3.0.0"
+          ]
+        ],
+        [
+          [
+            "libuuid1",
+            ">=",
+            "2.16"
+          ]
+        ],
+        [
+          [
+            "zlib1g",
+            ">=",
+            "1:1.1.4"
+          ]
+        ]
+      ],
+      "pre_depends": []
+    },
+    {
       "package": "whois",
       "version": "5.5.22",
       "architecture": "arm64",
@@ -23815,6 +24244,17 @@
       "architecture": "all",
       "sha256": "be00b7ea28e33a6e8342ddc0608dd32d9c255a329b57fb7589c650fecd5fe58c",
       "repository_path": "pool/main/x/xbitmaps/xbitmaps_1.1.1-2.2_all.deb",
+      "suite": "noble",
+      "component": "main",
+      "depends": [],
+      "pre_depends": []
+    },
+    {
+      "package": "xdg-utils",
+      "version": "1.1.3-4.1ubuntu3",
+      "architecture": "all",
+      "sha256": "499ad8b146f8d6f092ada8f878e7c6d93239caf29ce92c1381fe94e314169986",
+      "repository_path": "pool/main/x/xdg-utils/xdg-utils_1.1.3-4.1ubuntu3_all.deb",
       "suite": "noble",
       "component": "main",
       "depends": [],

@@ -1,0 +1,9 @@
+[package]
+name = "linuxhub-getifaddrs-protocol"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"

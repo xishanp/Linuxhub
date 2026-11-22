@@ -1,0 +1,8 @@
+[Default Applications]
+text/html=google-chrome.desktop
+application/xhtml+xml=google-chrome.desktop
+x-scheme-handler/http=google-chrome.desktop
+x-scheme-handler/https=google-chrome.desktop
+application/vnd.debian.binary-package=linuxhub-deb-installer.desktop;
+application/x-deb=linuxhub-deb-installer.desktop;
+application/x-debian-package=linuxhub-deb-installer.desktop;

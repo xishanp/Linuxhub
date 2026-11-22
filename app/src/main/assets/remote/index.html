@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LinuxHub 远程桌面</title>
+<style>
+:root{color-scheme:dark;--paper:rgba(255,255,255,.09);--line:rgba(255,255,255,.18);--muted:#a7a7ad}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08080a;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff}
+#app{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#08080a}
+canvas{display:block;width:100%;height:100%;object-fit:contain;outline:none;background:#08080a;touch-action:none;cursor:default}
+canvas.auto-fit{object-fit:fill}
+#top{position:fixed;left:16px;right:auto;top:max(16px,env(safe-area-inset-top));display:flex;gap:8px;align-items:center;justify-content:flex-start;pointer-events:none}
+#status{padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(20,20,24,.58);backdrop-filter:blur(18px);color:var(--muted);font-size:12px;pointer-events:auto;cursor:pointer;user-select:none}
+#quality{position:fixed;left:16px;top:calc(max(16px,env(safe-area-inset-top)) + 46px);display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid var(--line);border-radius:18px;background:rgba(20,20,24,.88);backdrop-filter:blur(24px);box-shadow:0 18px 50px rgba(0,0,0,.42);min-width:176px;z-index:4}
+#quality button{width:100%;text-align:left;padding:9px 11px;border:0;border-radius:12px;background:transparent;backdrop-filter:none;color:#fff;font-size:12px}
+#quality button:hover,#quality button.selected{background:rgba(255,255,255,.13)}
+#tools{display:flex;gap:8px;pointer-events:auto}
+button{border:1px solid var(--line);border-radius:999px;background:rgba(20,20,24,.62);backdrop-filter:blur(18px);color:#fff;padding:9px 14px;font:inherit;cursor:pointer}
+button:active{transform:scale(.96)}
+#login{width:min(390px,calc(100vw - 36px));padding:26px;border:1px solid var(--line);border-radius:26px;background:rgba(24,24,28,.72);backdrop-filter:blur(26px);box-shadow:0 26px 90px rgba(0,0,0,.45)}
+#login h1{margin:0 0 6px;font-size:24px;letter-spacing:-.4px}
+#login p{margin:0 0 20px;color:var(--muted)}
+#code{width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.08);color:#fff;font:600 22px/1 monospace;letter-spacing:6px;text-align:center;outline:none}
+#enter{width:100%;margin-top:12px;padding:14px;background:#fff;color:#111;border-color:#fff;font-weight:700}
+.hidden{display:none!important}
+#hint{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:9px 14px;border-radius:999px;background:rgba(20,20,24,.72);border:1px solid var(--line);color:var(--muted);font-size:12px;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="screen" tabindex="0" autofocus></canvas>
+</div>
+<div id="top" class="hidden">
+  <div id="status">正在连接…</div>
+  <div id="tools"><button id="full">全屏</button></div>
+</div>
+<div id="quality" class="hidden">
+  <button data-quality="auto">自动 · 跟随窗口</button>
+  <button data-quality="1280x720">1280 × 720 · 流畅</button>
+  <button data-quality="1600x900">1600 × 900 · 均衡</button>
+  <button data-quality="1920x1080">1920 × 1080 · 清晰</button>
+  <button data-quality="2560x1600">2560 × 1600 · 原画</button>
+</div>
+<div id="login">
+  <h1>LinuxHub</h1>
+  <p>输入手机端显示的 6 位配对码</p>
+  <input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" autofocus>
+  <button id="enter">连接桌面</button>
+</div>
+<div id="hint" class="hidden">窗口尺寸变化会自动调整远端分辨率；若短暂黑屏，正在重新配置 H.264。首次使用 HTTPS 请接受本机证书。</div>
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  let code = qs.get('code') || '';
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
+  const login = document.getElementById('login');
+  const codeInput = document.getElementById('code');
+  const top = document.getElementById('top');
+  const status = document.getElementById('status');
+  const hint = document.getElementById('hint');
+  const fullButton = document.getElementById('full');
+  const qualityMenu = document.getElementById('quality');
+  const qualityButtons = [...qualityMenu.querySelectorAll('[data-quality]')];
+  let socket = null, connected = false, retryTimer = null;
+  let qualityMode = localStorage.getItem('linuxhub-quality') || 'auto';
+  let lastMove = 0;
+  let viewportTimer = null;
+  let hintTimer = null;
+  let lastFps = 0;
+  let frameW = 1, frameH = 1;
+  let lastFrameAt = 0;
+  let lastReceivedSequence = 0;
+  let lastRenderedSequence = 0;
+  const sequenceByTimestamp = new Map();
+  let decoder = null;
+  let codecConfigured = false;
+  let decodedFrames = 0;
+  let fpsWindowAt = performance.now();
+
+  function setStatus(text){ status.textContent = text; }
+  function qualityLabel(mode){
+    return qualityButtons.find(button => button.dataset.quality === mode)?.textContent || '自动 · 跟随窗口';
+  }
+  function syncQualityMenu(){
+    qualityButtons.forEach(button => button.classList.toggle('selected', button.dataset.quality === qualityMode));
+    canvas.classList.toggle('auto-fit', qualityMode === 'auto');
+    qualityMenu.classList.add('hidden');
+  }
+  function syncFullButton(){ fullButton.textContent = document.fullscreenElement ? '缩小' : '全屏'; }
+  function showDesktop(){
+    login.classList.add('hidden');
+    top.classList.remove('hidden');
+    hint.classList.remove('hidden');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => hint.classList.add('hidden'), 1000);
+    canvas.focus();
+  }
+  function resetDecoder(){
+    codecConfigured = false;
+    if (decoder && decoder.state !== 'closed') {
+      try { decoder.close(); } catch (_) {}
+    }
+    decoder = null;
+  }
+  function codecName(avcC){
+    const hex = i => avcC[i].toString(16).padStart(2, '0').toUpperCase();
+    return `avc1.${hex(1)}${hex(2)}${hex(3)}`;
+  }
+  function configureDecoder(avcC, width, height){
+    resetDecoder();
+    if (!window.isSecureContext) {
+      setStatus('当前不是安全上下文，浏览器已禁用 WebCodecs；请改用 HTTPS 地址');
+      return;
+    }
+    if (!('VideoDecoder' in window)) {
+      setStatus('当前浏览器没有 WebCodecs（需要 Chrome / Edge 109+）');
+      return;
+    }
+    frameW = width;
+    frameH = height;
+    decoder = new VideoDecoder({
+      output(frame){
+        try {
+          const renderedSequence = sequenceByTimestamp.get(frame.timestamp);
+          if (renderedSequence !== undefined) {
+            sequenceByTimestamp.delete(frame.timestamp);
+            if (renderedSequence > lastRenderedSequence) lastRenderedSequence = renderedSequence;
+          }
+          if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+            canvas.width = frame.displayWidth;
+            canvas.height = frame.displayHeight;
+          }
+          frameW = frame.displayWidth;
+          frameH = frame.displayHeight;
+          ctx.drawImage(frame, 0, 0);
+          lastFrameAt = Date.now();
+          decodedFrames++;
+          const now = performance.now();
+          if (now - fpsWindowAt >= 1000) {
+            lastFps = Math.round(decodedFrames * 1000 / (now - fpsWindowAt));
+            decodedFrames = 0;
+            fpsWindowAt = now;
+            setStatus(`已连接 · ${lastFps} FPS · ${frameW}×${frameH}`);
+          }
+        } finally {
+          frame.close();
+        }
+      },
+      error(error){
+        codecConfigured = false;
+        setStatus(`解码失败：${error.message || error}`);
+      }
+    });
+    decoder.configure({
+      codec: codecName(avcC),
+      description: avcC,
+      optimizeForLatency: true,
+      // Some desktop Chrome/Edge H.264 hardware decoders reject the High
+      // profile produced by MediaCodec. Software decode is the compatible
+      // path; it also avoids green/stride artefacts from those decoders.
+      hardwareAcceleration: 'prefer-software'
+    });
+    codecConfigured = true;
+    setStatus(`正在解码 · ${width}×${height}`);
+  }
+  function handleBinary(buffer){
+    const data = new Uint8Array(buffer);
+    if (data.length < 1) return;
+    const type = data[0];
+    if (type === 1) {
+      if (data.length < 9) return;
+      const view = new DataView(buffer);
+      const width = view.getUint32(1);
+      const height = view.getUint32(5);
+      lastReceivedSequence = 0;
+      lastRenderedSequence = 0;
+      sequenceByTimestamp.clear();
+      configureDecoder(data.slice(9), width, height);
+      return;
+    }
+    if (type !== 2 || !decoder || !codecConfigured || data.length < 15) return;
+    const view = new DataView(buffer);
+    const sequence = view.getUint32(9);
+    const key = (data[13] & 1) !== 0;
+    if (sequence > lastReceivedSequence) lastReceivedSequence = sequence;
+    sequenceByTimestamp.set(sequence, sequence);
+    try {
+      decoder.decode(new EncodedVideoChunk({
+        type: key ? 'key' : 'delta',
+        timestamp: sequence,
+        data: data.slice(14)
+      }));
+    } catch (error) {
+      setStatus(`解码器输入失败：${error.message || error}`);
+    }
+  }
+  function connect(){
+    clearTimeout(retryTimer);
+    if (!code) { login.classList.remove('hidden'); top.classList.add('hidden'); return; }
+    showDesktop();
+    if (!window.isSecureContext) {
+      setStatus('当前不是安全上下文，浏览器已禁用 WebCodecs；请改用 HTTPS 地址');
+      return;
+    }
+    setStatus('正在连接…');
+    resetDecoder();
+    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${scheme}://${location.host}/stream?code=${encodeURIComponent(code)}`;
+    socket = new WebSocket(url);
+    socket.binaryType = 'arraybuffer';
+    socket.onopen = () => {
+      connected = true;
+      setStatus('正在等待 H.264 首帧…');
+      if (qualityMode === 'auto') sendViewport(); else sendQuality();
+    };
+    socket.onmessage = ev => {
+      if (typeof ev.data === 'string') return;
+      handleBinary(ev.data);
+    };
+    socket.onerror = () => setStatus('连接失败');
+    socket.onclose = () => {
+      connected = false;
+      resetDecoder();
+      setStatus('已断开，正在重试…');
+      retryTimer = setTimeout(connect, 1800);
+    };
+  }
+  function send(payload){
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+  function flushAck(){
+    if (!connected || lastRenderedSequence < 1) return;
+    send({type:'ack', seq:lastRenderedSequence});
+  }
+  function sendViewport(){
+    if (qualityMode !== 'auto') return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    send({
+      type:'viewport',
+      width:Math.round(rect.width * scale),
+      height:Math.round(rect.height * scale)
+    });
+  }
+  function sendQuality(){
+    if (qualityMode === 'auto') {
+      sendViewport();
+      return;
+    }
+    const [width, height] = qualityMode.split('x').map(Number);
+    if (!width || !height) return;
+    send({type:'quality', width, height});
+  }
+  function scheduleViewport(){
+    if (qualityMode !== 'auto') return;
+    clearTimeout(viewportTimer);
+    viewportTimer = setTimeout(sendViewport, 280);
+  }
+  function point(ev){
+    const rect = canvas.getBoundingClientRect();
+    if (qualityMode === 'auto') {
+      return {
+        x: Math.max(0, Math.min(frameW - 1, Math.round((ev.clientX - rect.left) / rect.width * frameW))),
+        y: Math.max(0, Math.min(frameH - 1, Math.round((ev.clientY - rect.top) / rect.height * frameH))),
+      };
+    }
+    // The stream is reconfigured to the browser aspect ratio. Until the new
+    // configuration arrives, contain keeps the complete image visible.
+    const scale = Math.min(rect.width / frameW, rect.height / frameH);
+    const displayW = frameW * scale;
+    const displayH = frameH * scale;
+    const offsetX = (rect.width - displayW) / 2;
+    const offsetY = (rect.height - displayH) / 2;
+    return {
+      x: Math.max(0, Math.min(frameW - 1, Math.round((ev.clientX - rect.left - offsetX) / scale))),
+      y: Math.max(0, Math.min(frameH - 1, Math.round((ev.clientY - rect.top - offsetY) / scale))),
+    };
+  }
+  window.addEventListener('resize', () => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width && rect.height) canvas.focus();
+    scheduleViewport();
+  });
+  function syncAutoViewport(){
+    if (!connected || qualityMode !== 'auto') return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const targetWidth = Math.round(rect.width * scale);
+    const targetHeight = Math.round(rect.height * scale);
+    if (Math.abs(frameW - targetWidth) > 8 || Math.abs(frameH - targetHeight) > 8) {
+      scheduleViewport();
+    }
+  }
+  document.addEventListener('fullscreenchange', () => {
+    syncFullButton();
+    scheduleViewport();
+  });
+  codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.replace(/\D/g,'').slice(0,6); });
+  document.getElementById('enter').onclick = () => {
+    code = codeInput.value.trim();
+    if (code.length !== 6) return;
+    history.replaceState(null, '', `?code=${encodeURIComponent(code)}`);
+    connect();
+  };
+  codeInput.addEventListener('keydown', ev => { if (ev.key === 'Enter') document.getElementById('enter').click(); });
+  fullButton.onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+    canvas.focus();
+  };
+  status.onclick = ev => {
+    ev.stopPropagation();
+    qualityMenu.classList.toggle('hidden');
+  };
+  qualityMenu.onclick = ev => ev.stopPropagation();
+  qualityButtons.forEach(button => {
+    button.onclick = () => {
+      qualityMode = button.dataset.quality || 'auto';
+      localStorage.setItem('linuxhub-quality', qualityMode);
+      syncQualityMenu();
+      if (qualityMode === 'auto') sendViewport(); else sendQuality();
+      canvas.focus();
+    };
+  });
+  document.addEventListener('click', () => qualityMenu.classList.add('hidden'));
+  canvas.addEventListener('pointermove', ev => {
+    const now = performance.now(); if (now - lastMove < 16) return; lastMove = now;
+    send({type:'move', ...point(ev)});
+  });
+  canvas.addEventListener('pointerdown', ev => {
+    canvas.setPointerCapture?.(ev.pointerId); canvas.focus();
+    send({type:'move', ...point(ev)});
+    send({type:'button', button: ev.button + 1, pressed:true});
+  });
+  canvas.addEventListener('pointerup', ev => {
+    send({type:'button', button: ev.button + 1, pressed:false});
+  });
+  canvas.addEventListener('contextmenu', ev => ev.preventDefault());
+  canvas.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const button = ev.deltaY > 0 ? 5 : 4;
+    send({type:'button', button, pressed:true});
+    send({type:'button', button, pressed:false});
+  }, {passive:false});
+  canvas.addEventListener('keydown', ev => {
+    if (ev.key === 'F11') return;
+    ev.preventDefault();
+    send({type:'key', key:ev.key, pressed:true, shift:ev.shiftKey});
+  });
+  canvas.addEventListener('keyup', ev => {
+    ev.preventDefault();
+    send({type:'key', key:ev.key, pressed:false, shift:ev.shiftKey});
+  });
+  canvas.addEventListener('blur', () => setStatus('窗口未聚焦'));
+  canvas.addEventListener('focus', () => setStatus(connected ? '已连接' : '正在连接…'));
+  setInterval(() => {
+    if (connected && lastFrameAt && Date.now() - lastFrameAt > 1200) {
+      setStatus(`已连接 · ${frameW}×${frameH}`);
+    }
+  }, 1500);
+  setInterval(flushAck, 50);
+  setInterval(syncAutoViewport, 1000);
+  syncFullButton();
+  syncQualityMenu();
+  if (code.length === 6) connect(); else codeInput.focus();
+})();
+</script>
+</body>
+</html>

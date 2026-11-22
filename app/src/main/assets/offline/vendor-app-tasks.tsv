@@ -1,0 +1,35 @@
+libreoffice	LibreOffice	libreoffice_24.2.7-0ubuntu0.24.04.7_arm64.deb libreoffice-gnome_24.2.7-0ubuntu0.24.04.7_arm64.deb libreoffice-style-yaru_24.2.7-0ubuntu0.24.04.7_all.deb libreoffice-l10n-zh-cn_24.2.7-0ubuntu0.24.04.7_all.deb libreoffice-help-zh-cn_24.2.7-0ubuntu0.24.04.7_all.deb
+evince	文档查看器	evince_46.3.1-0ubuntu1.1_arm64.deb
+remmina	Remmina 远程桌面	remmina_1.4.43+dfsg-0ubuntu0.24.04.2_arm64.deb
+transmission	Transmission	transmission-gtk_4.0.5-1ubuntu0.1_arm64.deb
+rhythmbox	Rhythmbox 音乐	rhythmbox_3.4.7-2ubuntu6_arm64.deb
+totem	视频播放器	totem_43.0-2ubuntu4_arm64.deb
+shotwell	Shotwell 照片	shotwell_0.32.6-1ubuntu3_arm64.deb
+eog	图像查看器	eog_45.3-1ubuntu2_arm64.deb
+snapshot	截图工具	gnome-snapshot_46.2-1ubuntu2_arm64.deb
+cheese	相机	cheese_44.1-1build4_arm64.deb
+simple-scan	文档扫描仪	simple-scan_46.0-0ubuntu2.1_arm64.deb
+calculator	计算器	gnome-calculator_46.3-0ubuntu0.1_arm64.deb
+calendar	日历	gnome-calendar_46.1-0ubuntu2_arm64.deb
+clocks	时钟	gnome-clocks_46.0-1build1_arm64.deb
+characters	字符映射表	gnome-characters_46.0-1build1_arm64.deb
+contacts	联系人	gnome-contacts_46.0-1build1_arm64.deb
+font-viewer	字体查看器	gnome-font-viewer_46.0-1build1_arm64.deb
+logs	日志	gnome-logs_45.0-1build1_arm64.deb
+maps	地图	gnome-maps_46.0-1build1_arm64.deb
+weather	天气	gnome-weather_46.0-1_all.deb
+tweaks	优化	gnome-tweaks_46.0-2_all.deb
+disks	磁盘工具	gnome-disk-utility_46.0-1ubuntu3_arm64.deb
+system-monitor	系统监视器	gnome-system-monitor_46.0-1build1_arm64.deb
+file-roller	归档管理器	file-roller_44.3-0ubuntu2_arm64.deb
+baobab	磁盘用量分析器	baobab_46.0-1build1_arm64.deb
+seahorse	密码和密钥	seahorse_43.0-3build2_arm64.deb
+usb-creator	启动盘创建器	usb-creator-gtk_0.3.17_all.deb
+deja-dup	备份	deja-dup_45.2-1build2_arm64.deb
+help	帮助	yelp_42.2-1ubuntu0.24.04.2_arm64.deb
+power-stats	电源统计	gnome-power-manager_43.0-2build2_arm64.deb
+remote-desktop	远程桌面	gnome-remote-desktop_46.3-0ubuntu1.2_arm64.deb
+orca	Orca 屏幕阅读器	orca_46.1-1ubuntu1_all.deb
+ubuntu-docs	Ubuntu 文档	ubuntu-docs_24.04.2_all.deb
+chrome	Google Chrome	google-chrome-stable_158.0.8127.36-1_arm64.deb
+thunderbird	Thunderbird	thunderbird_140.7.1+build1-0ubuntu0.22.04.1_arm64.deb thunderbird-locale-zh-hans_140.7.1+build1-0ubuntu0.22.04.1_all.deb

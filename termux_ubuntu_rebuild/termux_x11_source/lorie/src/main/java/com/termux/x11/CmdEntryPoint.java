@@ -162,6 +162,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     }
 
     public static native boolean start(String[] args);
+
+    /**
+     * Reports whether the X server thread has consumed the renderer socket.
+     * The Java-side connection flag only proves that the client configured an
+     * fd; this native flag is the server-side readiness marker.
+     */
+    public static boolean isConnected() {
+        return connected();
+    }
     public native ParcelFileDescriptor getXConnection();
     public native ParcelFileDescriptor getLogcatOutput();
     private static native boolean connected();

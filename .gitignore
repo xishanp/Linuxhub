@@ -30,7 +30,26 @@ local.properties
 /app/src/main/assets/offline/vendor-apps-arm64.tar
 /app/src/main/assets/offline/core-dev-arm64.tar
 /app/src/main/assets/rootfs/ubuntu-base-24.04.4-base-arm64.tar
+/app/src/main/assets/rootfs/ubuntu-base-26.04.1-base-arm64.tar.gz
+/app/src/main/assets/offline/gnome-24.04-arm64.tar
+/app/src/main/assets/offline/gnome-26.04-arm64.tar
 
 # Local offline build cache
 /.cache/
 /app/src/main/assets/offline/bootstrap-arm64.tar
+
+# Local agent diagnostics and backups
+/.debug/
+/.codex-backups/
+/.venv-offline/
+
+# Rust build output
+**/target/
+
+# Local release artifacts, diagnostic evidence, and task scratch files
+/artifacts/
+/docs/research/
+/reference/
+/.workbuddy/
+*.orig
+.DS_Store

@@ -1,0 +1,19 @@
+[package]
+name = "linuxhub-sessiond"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+description = "LinuxHub native session control-plane for Ubuntu GNOME X11"
+license = "MIT"
+
+[lib]
+name = "linuxhub_sessiond"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "linuxhub-session-plan"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

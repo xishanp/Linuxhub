@@ -188,6 +188,18 @@ present_vblank_scrap(present_vblank_ptr vblank)
                   vblank->pixmap->drawable.id, vblank->window->drawable.id,
                   vblank->crtc));
 
+    /* lorie: an offloaded copy into vblank->pixmap may still be in flight - ack it now, while
+     * the pixmap is still valid, or the extra buffer references lorieTryScheduleGpuCopy took
+     * leak forever. */
+    if (vblank->gpu_copy_pending) {
+        lorieGpuCopyAck(vblank->pixmap, vblank->gpu_copy_dst_buffer);
+        vblank->gpu_copy_pending = FALSE;
+        if (vblank->gpu_copy_damage) {
+            RegionDestroy(vblank->gpu_copy_damage);
+            vblank->gpu_copy_damage = NULL;
+        }
+    }
+
     present_pixmap_idle(vblank->pixmap, vblank->window, vblank->serial, vblank->idle_fence);
     present_fence_destroy(vblank->idle_fence);
     dixDestroyPixmap(vblank->pixmap, vblank->pixmap->drawable.id);
@@ -200,6 +212,17 @@ present_vblank_scrap(present_vblank_ptr vblank)
 void
 present_vblank_destroy(present_vblank_ptr vblank)
 {
+    /* lorie: same as in present_vblank_scrap() - must run before vblank->pixmap is dropped below,
+     * for the destroy paths that reach a still-pending vblank without going through scrap first. */
+    if (vblank->gpu_copy_pending) {
+        lorieGpuCopyAck(vblank->pixmap, vblank->gpu_copy_dst_buffer);
+        vblank->gpu_copy_pending = FALSE;
+        if (vblank->gpu_copy_damage) {
+            RegionDestroy(vblank->gpu_copy_damage);
+            vblank->gpu_copy_damage = NULL;
+        }
+    }
+
     /* Remove vblank from window and screen lists */
     xorg_list_del(&vblank->window_list);
     /* Also make sure vblank is removed from event queue (wnmd) */
