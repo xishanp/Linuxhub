@@ -10,7 +10,8 @@
 - 签名证书 SHA-256 `dc82aff0c06fdef4df5df54befbb79a0446a5ef95741c4f4ad18e0455b4fea10`（v3）
 - 当前发布 APK SHA-256 `c4951876599b5a8a388170952039a724959f5c48004aec8f92e1de7379adc2b7`
   - 内容：平板大尺寸修复（`DesktopSizePolicy`）+ 原生 Xlorie 重建
-- 回滚包：`artifacts/rollback/LinuxHub-Myth-Prometheus.apk`，SHA-256 `0aa2d258…`（无平板修复，Xlorie 正常）
+- 回滚包：`artifacts/rollback/LinuxHub-Myth-Prometheus.apk`，SHA-256 `c4951876…`（**与当前发布包同一份**）
+- 更早的 `0aa2d258…`（无平板修复）已挪到 `.codex-backups/rollback-replaced-20261122-1955/`，未删除
 - 源码分支：`main`、`codex/linuxhub-2.0`
 
 ## 二、发版铁律（吃过大亏）
