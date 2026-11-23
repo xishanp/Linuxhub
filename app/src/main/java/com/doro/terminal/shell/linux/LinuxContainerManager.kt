@@ -11,6 +11,7 @@ import java.util.Properties
 
 class LinuxContainerManager(private val context: Context) {
     private val paths = ContainerPaths(context)
+    private val husk = HuskRuntime(paths.rootfsDir, paths.baseDir)
     private val audioBridge = ContainerAudioBridge(paths.audioPipe)
     private val virglServer = VirglServerController(context, paths)
     // Bridge process state is shared in the companion object below.
@@ -65,6 +66,11 @@ class LinuxContainerManager(private val context: Context) {
         val selected = state.components
         saveInitializationState(state)
         prepareLog()
+        // A resumed initialization skips every checkpointed step. Runtime
+        // assets live inside EXTRACT_SYSTEM, so an APK update that resumes at
+        // CREATE_CONTAINER would otherwise keep the old loader/libc/usermgr
+        // until a full reset. Deploy them before the resume gate every time.
+        if (paths.rootfsDir.isDirectory) ensureHuskRuntime()
 
         try {
             fun execute(step: InitializationStep, message: String, action: () -> Unit) {
@@ -567,9 +573,15 @@ class LinuxContainerManager(private val context: Context) {
         ensureDebPackageInstaller(config.username)
         installRuntime()
         ensureGetifaddrsBridge()
-        val script = ensureAndroidGroupNamesScript() +
-            "exec /usr/bin/su - ${shell(config.username)}"
-        return prootCommand("/bin/sh", "-c", script)
+        // Under proot the group-name repair exists because `getgroups` leaks the
+        // Android gids. Husk reports only the guest's primary group (evidence 129),
+        // so this is a proot-only patch and is skipped.
+        val script = if (husk.isPresent) {
+            husk.loginShell(config.username) { shell(it) }
+        } else {
+            ensureAndroidGroupNamesScript() + "exec /usr/bin/su - ${shell(config.username)}"
+        }
+        return runtimeCommand(config.username, "/bin/sh", "-c", script)
     }
 
     /**
@@ -597,6 +609,12 @@ class LinuxContainerManager(private val context: Context) {
     }
 
     fun loginEnvironment(): Map<String, String> {
+        // PRoot needs its loader and a scratch dir in the environment. Husk takes
+        // both as argv/env of the guest itself, and leaking the host library path
+        // into a glibc guest only breaks its own library search.
+        if (husk.isPresent) {
+            return husk.bootstrapEnvironment() + ("TERM" to "xterm-256color")
+        }
         paths.prootTmpDir.mkdirs()
         return mapOf(
             "LD_LIBRARY_PATH" to paths.libraryDir.path,
@@ -607,7 +625,8 @@ class LinuxContainerManager(private val context: Context) {
         )
     }
 
-    fun sessionWorkingDirectory(): String = context.filesDir.path
+    fun sessionWorkingDirectory(): String =
+        if (husk.isPresent) paths.rootfsDir.path else context.filesDir.path
 
     private fun ensureNetworkConfig() {
         File(paths.rootfsDir, "etc/resolv.conf").writeText(
@@ -645,12 +664,11 @@ class LinuxContainerManager(private val context: Context) {
      */
     fun startRemoteFrameStream(): Process {
         ensureX11ControlAsset()
-        return ProcessBuilder(
-            prootCommand(
-                "/bin/sh",
-                "-c",
-                "export DISPLAY=:0; exec /usr/local/bin/doro-x11-screenshot --display :0 --stream --fps 3",
-            ),
+        return sessionProcess(
+            null,
+            "/bin/sh",
+            "-c",
+            "export DISPLAY=:0; exec /usr/local/bin/doro-x11-screenshot --display :0 --stream --fps 3",
         ).apply {
             environment().putAll(loginEnvironment())
             redirectErrorStream(false)
@@ -663,12 +681,11 @@ class LinuxContainerManager(private val context: Context) {
      */
     fun startRemoteInputDaemon(): Process {
         ensureX11ControlAsset()
-        return ProcessBuilder(
-            prootCommand(
-                "/bin/sh",
-                "-c",
-                "export DISPLAY=:0; exec /usr/local/bin/doro-x11-input --display :0 --daemon",
-            ),
+        return sessionProcess(
+            null,
+            "/bin/sh",
+            "-c",
+            "export DISPLAY=:0; exec /usr/local/bin/doro-x11-input --display :0 --daemon",
         ).apply {
             environment().putAll(loginEnvironment())
             redirectErrorStream(false)
@@ -1291,12 +1308,12 @@ class LinuxContainerManager(private val context: Context) {
             "export DORO_DESKTOP_TERMINAL=1; " +
             GnomeDesktopCompatibility.sessionScript(display, config.username, gpuCapability)
         val startSession = "printf 'stage=outer-root\\n' >>/tmp/doro-startup-stage.log 2>/dev/null || true; " +
-            ensureAndroidGroupNamesScript() +
+            (if (husk.isPresent) "" else ensureAndroidGroupNamesScript()) +
             GnomeDesktopCompatibility.systemServicesScript() + "; " +
             "printf 'stage=before-su\\n' >>/tmp/doro-startup-stage.log 2>/dev/null || true; " +
-            "exec /usr/bin/su - ${shell(config.username)} -c ${shell(script)}"
+            husk.asUser(config.username, script) { shell(it) }
         appendLog("DESKTOP_STAGE process-create")
-        val process = ProcessBuilder(prootCommand("/bin/sh", "-c", startSession))
+        val process = sessionProcess(config.username, "/bin/sh", "-c", startSession)
             .apply { environment().putAll(loginEnvironment()) }
             .redirectErrorStream(true)
             .start()
@@ -1323,10 +1340,10 @@ class LinuxContainerManager(private val context: Context) {
         ensureSudoInstalled(config.username)
         ensureStartupMaintenance(config.username)
         val userCommand = "cd \"\$HOME\" 2>/dev/null || true; exec /bin/sh -lc ${shell(command)}"
-        val loginScript = ensureAndroidGroupNamesScript() +
-            "exec /usr/bin/su - ${shell(config.username)} -c ${shell(userCommand)}"
+        val loginScript = (if (husk.isPresent) "" else ensureAndroidGroupNamesScript()) +
+            husk.asUser(config.username, userCommand) { shell(it) }
         val startedAt = System.nanoTime()
-        val process = ProcessBuilder(prootCommand("/bin/sh", "-c", loginScript))
+        val process = sessionProcess(config.username, "/bin/sh", "-c", loginScript)
             .apply { environment().putAll(loginEnvironment()) }
             .redirectErrorStream(true)
             .start()
@@ -1383,9 +1400,21 @@ class LinuxContainerManager(private val context: Context) {
         onActivity: (String) -> Unit = {}
     ): String {
         appendLog("COMMAND $operation")
-        val process = ProcessBuilder(prootCommand("/bin/sh", "-c", script))
+        val builder = sessionProcess(null, "/bin/sh", "-c", script)
             .apply { environment().putAll(loginEnvironment()) }
-            .redirectErrorStream(true).start()
+        if (husk.isPresent) {
+            val argv = builder.command()
+            val libraryPath = argv.indexOf("--library-path")
+                .takeIf { it >= 0 }
+                ?.let { argv.getOrNull(it + 1) }
+                .orEmpty()
+            appendLog(
+                "EXEC $operation cwd=${builder.directory()?.path.orEmpty()} " +
+                    "argv0=${argv.firstOrNull().orEmpty()} " +
+                    "library-path=$libraryPath runtime=husk"
+            )
+        }
+        val process = builder.redirectErrorStream(true).start()
         val output = StringBuilder()
         val watchdog = ProcessWatchdog(timeoutMs, idleTimeoutMs)
 val reader = Thread {
@@ -1427,8 +1456,12 @@ val reader = Thread {
         check(failure == null) { "$failure，已终止进程。日志：${paths.initializationLogFile.path}" }
         val code = process.waitFor()
         val captured = synchronized(output) { output.toString() }
+        if (code != 0 && husk.isPresent) {
+            val traps = runCatching { husk.sigsysLog.readText().takeLast(4096) }.getOrDefault("")
+            if (traps.isNotBlank()) appendLog("[$operation] seccomp traps:\n$traps")
+        }
         check(code == 0) { captured.ifBlank { "Ubuntu 配置失败：$operation，退出码 $code" } }
-return captured
+        return captured
     }
 private fun prepareContainerMounts() {
         paths.x11SocketDir.mkdirs()
@@ -1495,7 +1528,32 @@ private fun prepareContainerMounts() {
             "case \"\$root_hash\" in ''|'*'|'!'*) [ -n \"\$user_hash\" ] && printf 'root:%s\\n' \"\$user_hash\" | chpasswd -e || exit 1;; esac; " +
             "test -x /usr/bin/sudo; test -r /etc/sudoers.d/${shell(username)}"
 
-    private fun prootCommand(vararg command: String): List<String> = buildList {
+    /**
+     * One entry point for every session: Husk when its loader is installed,
+     * proot otherwise. Both behind the same call, so the comparison stays honest
+     * - same rootfs, same command, two runtimes.
+     */
+    private fun runtimeCommand(user: String?, vararg command: String): List<String> =
+        if (husk.isPresent) {
+            husk.prepare()
+            husk.command(user, command.toList())
+        } else {
+            prootCommandLegacy(*command)
+        }
+
+    /** A process builder that starts in the directory the runtime needs. */
+    private fun sessionProcess(user: String?, vararg command: String): ProcessBuilder {
+        val builder = ProcessBuilder(runtimeCommand(user, *command))
+        // The embedded shim reads these from the loader's own environment at
+        // _dl_init. The same values are repeated after env -i for child execs.
+        if (husk.isPresent) {
+            builder.directory(paths.rootfsDir)
+            builder.environment().putAll(husk.bootstrapEnvironment())
+        }
+        return builder
+    }
+
+    private fun prootCommandLegacy(vararg command: String): List<String> = buildList {
         add(paths.proot.path)
         prepareContainerMounts()
         addAll(listOf("--link2symlink", "-0", "-r", paths.rootfsDir.path,
@@ -1514,7 +1572,19 @@ private fun prepareContainerMounts() {
         addAll(command)
     }
 
+    /** Extract the Husk loader + guest account tools from the APK (idempotent). */
+    private fun ensureHuskRuntime() {
+        if (!paths.rootfsDir.isDirectory) return
+        runCatching { husk.ensureInstalled { asset, dest -> copyAsset(asset, dest) } }
+            .onFailure { appendLog("WARN husk runtime unavailable: ${it.message}") }
+    }
+
     private fun installRuntime() {
+        ensureHuskRuntime()
+        // Everything below exists for proot: its loader, its two shared
+        // libraries, the getifaddrs bridge and the LD_PRELOAD that installs it.
+        // None of that belongs in a Husk container (evidence 116/121).
+        if (husk.isPresent) return
         val revision = installedProfileRevision()
         val installedClient = File(paths.rootfsDir, GetifaddrsBridge.CONTAINER_LIBRARY.removePrefix("/"))
         val profile = File(paths.rootfsDir, "etc/profile.d/doro.sh")
@@ -1566,6 +1636,8 @@ private fun prepareContainerMounts() {
     }
 
     private fun ensureGetifaddrsBridge() {
+        // proot-only: Husk enumerates interfaces through its own netlink interpose.
+        if (husk.isPresent) return
         synchronized(bridgeLock) {
             if (bridgeProcess?.let { runCatching { it.exitValue() }.isFailure } == true && paths.getifaddrsSocket.exists()) return
             bridgeProcess?.destroy()
@@ -2192,12 +2264,19 @@ private fun prepareContainerMounts() {
 
     private fun userCreationScript(username: String, password: CharArray): String {
         val credentials = "$username:${password.concatToString()}"
+        // `useradd`/`chpasswd` are wrappers around husk-usermgr once the Husk
+        // runtime is installed (see HuskRuntime), so the same script serves both.
         return "id -u ${shell(username)} >/dev/null 2>&1 || useradd -m -s /bin/bash ${shell(username)}; " +
             "mkdir -p /home/${shell(username)}; printf '%s\\n' ${shell(credentials)} | chpasswd"
     }
 
     private fun environmentScript(username: String): String =
-        "printf '%s\\n' 'export LANG=zh_CN.UTF-8' 'export LC_ALL=zh_CN.UTF-8' 'export LANGUAGE=zh_CN:zh' 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games' 'export LD_PRELOAD=${GetifaddrsBridge.CONTAINER_LIBRARY}' > /etc/profile.d/doro.sh && " +
+        // The LD_PRELOAD bridge exists because proot's getifaddrs() cannot see the
+        // host interfaces. Husk interposes AF_NETLINK itself (evidence 116/121), so
+        // the preload is a proot-only patch and is not written under Husk.
+        "printf '%s\\n' 'export LANG=zh_CN.UTF-8' 'export LC_ALL=zh_CN.UTF-8' 'export LANGUAGE=zh_CN:zh' 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games'" +
+            (if (husk.isPresent) "" else " 'export LD_PRELOAD=${GetifaddrsBridge.CONTAINER_LIBRARY}'") +
+            " > /etc/profile.d/doro.sh && " +
             "ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && " +
             "printf '%s\\n' 'Asia/Shanghai' > /etc/timezone && " +
             "touch /home/${shell(username)}/.bashrc && " +

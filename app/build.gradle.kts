@@ -25,6 +25,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // A Husk test build must never share data with the published app
+            // (com.linuxhub.myth); it installs beside it as ...myth.husk.
+            applicationIdSuffix = ".husk"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
