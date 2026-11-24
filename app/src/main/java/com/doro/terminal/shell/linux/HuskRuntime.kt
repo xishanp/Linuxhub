@@ -38,7 +38,7 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
         const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
         const val SU_ASSET = "husk/arm64-v8a/husk-su"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-16"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-17"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
