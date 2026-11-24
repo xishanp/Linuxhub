@@ -73,7 +73,16 @@
 
 /* RandR */
 #define SERVER_RANDR_MAJOR_VERSION		1
-#define SERVER_RANDR_MINOR_VERSION		6
+/* LinuxHub: this server implements RandR up to 1.6 except for CRTC transforms
+ * (lorie's CRTC has a single fixed mode and no scanout scaling, see
+ * randr/rrcrtc.c:RRCrtcTransformSet -> BadValue when !crtc->transforms).
+ * Mutter infers "native output scaling is possible" from the advertised minor
+ * version alone, so advertising 1.6 makes it try SetCrtcTransform, fail, and
+ * log "Impossible to set scaling on crtc" on every startup. Report 1.2 instead:
+ * that is the highest version whose guarantees this server actually keeps, and
+ * scaling is provided by the host app (X screen size + stretch) rather than by
+ * RandR transforms. */
+#define SERVER_RANDR_MINOR_VERSION		2
 
 /* Record */
 #define SERVER_RECORD_MAJOR_VERSION		1

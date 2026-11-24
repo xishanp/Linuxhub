@@ -70,7 +70,7 @@ fun TerminalSettingsPage() {
     val context = LocalContext.current
     val prefs = remember { android.preference.PreferenceManager.getDefaultSharedPreferences(context) }
     val displayMode = rememberStringPreference(prefs, "displayResolutionMode", "native")
-    val touchMode = rememberStringPreference(prefs, "touchMode", "1")
+    val touchMode = rememberStringPreference(prefs, "touchMode", "2")
     val availability = settingsAvailability(displayMode, touchMode)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     Column(

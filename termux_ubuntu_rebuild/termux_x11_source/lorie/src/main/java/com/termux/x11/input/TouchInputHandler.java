@@ -803,6 +803,10 @@ public class TouchInputHandler {
 
         /** Determines whether the given screen point lies outside the desktop image. */
         private boolean screenPointLiesOutsideImageBoundary(float screenX, float screenY) {
+            // Unknown geometry must not mean "everything is outside": that turns
+            // every tap into a no-op instead of a click at that spot.
+            if (mRenderData.screenWidth <= 0 || mRenderData.screenHeight <= 0)
+                return false;
             mRenderData.mapScreenPoint(screenX, screenY, mappedPoint);
 
             return mappedPoint[0] < -EPSILON || mappedPoint[0] > mRenderData.screenWidth + EPSILON ||

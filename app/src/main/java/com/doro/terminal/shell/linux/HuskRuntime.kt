@@ -38,7 +38,7 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
         const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
         const val SU_ASSET = "husk/arm64-v8a/husk-su"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-20"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-21"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
@@ -274,6 +274,13 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
 
     fun prepare() {
         guestDirs.forEach { File(rootfsDir, it).mkdirs() }
+        // One trap log per session, not one per install: the shim appends, so a
+        // long-lived rootfs otherwise keeps every session's lines and looks like
+        // noise even when a single session only wrote a handful. The on-disk
+        // first-sighting markers are swept for the same reason - they exist to
+        // bound one session, not to silence every session after it.
+        runCatching { if (sigsysLog.isFile) sigsysLog.delete() }
+        runCatching { File(rootfsDir, "tmp/.nr-sigsys").deleteRecursively() }
     }
 
     private fun libraryPath(): String {

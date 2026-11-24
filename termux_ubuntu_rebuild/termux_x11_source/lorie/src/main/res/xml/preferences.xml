@@ -25,7 +25,7 @@
         <SwitchPreferenceCompat app:defaultValue="true" app:key="keepScreenOn" />
     </PreferenceScreen>
     <PreferenceScreen app:key="pointer">
-        <ListPreference app:key="touchMode" app:defaultValue="1" app:entries="@array/touchscreenInputModesEntries" app:entryValues="@array/touchscreenInputModesValues" />
+        <ListPreference app:key="touchMode" app:defaultValue="2" app:entries="@array/touchscreenInputModesEntries" app:entryValues="@array/touchscreenInputModesValues" />
         <SwitchPreferenceCompat app:key="scaleTouchpad" app:defaultValue="true" />
         <SwitchPreferenceCompat app:key="showStylusClickOverride" app:defaultValue="false" />
         <SwitchPreferenceCompat app:key="stylusIsMouse" app:defaultValue="false" />

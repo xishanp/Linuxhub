@@ -20,7 +20,13 @@
 
   <standard_session_servicedirs/>
 
+  <!-- allow user="*": dbus-daemon only accepts EXTERNAL clients whose uid is
+       the bus owner's uid (the desktop runs as uid 1000). Shells started from
+       the app run as the container's root (uid 0), so without this rule they
+       authenticate fine and are then dropped right after BEGIN; gio, gvfs,
+       gsettings and xdg-open all fail with "Did not receive a reply". -->
   <policy context="default">
+    <allow user="*"/>
     <allow send_destination="*" eavesdrop="true"/>
     <allow eavesdrop="true"/>
     <allow own="*"/>

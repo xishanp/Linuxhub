@@ -779,6 +779,9 @@ public class LorieView extends SurfaceView implements InputStub {
         Prefs prefs = InputPreferencesRegistry.get();
         if (prefs != null) reloadPreferences(prefs);
         triggerCallback();
+        // A headless runtime surface never settles a viewport, so the input
+        // bounds would stay 0x0 and the gesture pipeline would drop every tap.
+        if (p.x > 0 && p.y > 0) updateInputTransform();
     }
 
     public void triggerCallback() {
@@ -826,7 +829,26 @@ public class LorieView extends SurfaceView implements InputStub {
     }
 
     private Matrix getInputTransform() {
+        // Nothing has set the image bounds yet (a headless/runtime surface that
+        // never went through the settled-viewport path). Falls back to mapping
+        // the whole surface onto the whole image, otherwise every tap would be
+        // judged "outside the image" and silently dropped.
+        if (inputSourceWidth <= 0.f || inputSourceHeight <= 0.f || inputViewport.isEmpty()) {
+            int sw = runtimeSurfaceWidth > 0 ? runtimeSurfaceWidth : getMeasuredWidth();
+            int sh = runtimeSurfaceHeight > 0 ? runtimeSurfaceHeight : getMeasuredHeight();
+            if (p.x > 0 && p.y > 0 && sw > 0 && sh > 0) {
+                inputViewport.set(0, 0, sw, sh);
+                inputSourceLeft = inputSourceTop = 0.f;
+                inputSourceWidth = p.x;
+                inputSourceHeight = p.y;
+            }
+        }
         inputTransform.reset();
+        if (inputViewport.width() <= 0 || inputViewport.height() <= 0) {
+            // Still no geometry: report an empty matrix so callers treat the
+            // surface as one-to-one instead of producing NaN/Infinity points.
+            return new Matrix(inputTransform);
+        }
         inputTransform.postTranslate(-inputViewport.left, -inputViewport.top);
         inputTransform.postScale(inputSourceWidth / (float) inputViewport.width(), inputSourceHeight / (float) inputViewport.height());
         inputTransform.postTranslate(inputSourceLeft, inputSourceTop);
