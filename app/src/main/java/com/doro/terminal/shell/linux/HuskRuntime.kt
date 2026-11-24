@@ -36,7 +36,8 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val LOADER_ASSET = "husk/arm64-v8a/libld.so"
         const val USERMGR_ASSET = "husk/arm64-v8a/husk-usermgr"
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-4"
+        const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-7"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
@@ -102,6 +103,18 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
                     libc.setExecutable(true, false)
                 }
             }
+            // /usr/sbin/ldconfig must never reach the distro's ldconfig.real:
+            // it is *static*, so no GOT interposition can reach it, and this
+            // device's untrusted_app seccomp policy answers its startup syscalls
+            // with SIGSYS. Measured: the 2.0 initialisation, run from the UI on a
+            // freshly unpacked Ubuntu base, died with "Bad system call" in the
+            // very first guest command it issued (Husk evidence 136).
+            val ldconfig = File(rootfsDir, "usr/sbin/husk-ldconfig")
+            if (refresh || !ldconfig.isFile) {
+                copyAsset(LDCONFIG_ASSET, ldconfig)
+                ldconfig.setExecutable(true, false)
+            }
+            installLdconfigWrapper()
             installShadowTools()
             if (refresh) {
                 marker.parentFile?.mkdirs()
@@ -109,6 +122,40 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
             }
         }
     }
+
+    /**
+     * Point every `ldconfig` the guest can reach at our Rust writer.
+     *
+     * Ubuntu ships `/usr/sbin/ldconfig` as a shell wrapper around
+     * `/sbin/ldconfig.real`, a statically linked glibc binary; static code never
+     * passes through the shim, so in this domain it either writes the *host*
+     * /etc (EROFS) or dies on a trapped syscall. The distro copy is kept as
+     * `ldconfig.ubuntu` for reference and never executed.
+     */
+    private fun installLdconfigWrapper() {
+        val wrapper = "#!/bin/sh\nexec /usr/sbin/husk-ldconfig \"\$@\"\n"
+        val dirs = listOf("usr/sbin", "sbin")
+            .map { File(rootfsDir, it) }
+            .filter { it.isDirectory }
+            // merged-/usr makes /sbin and /usr/sbin the same directory
+            .distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.path) }
+        dirs.forEach { dir ->
+            val link = File(dir, "ldconfig")
+            if (!link.exists() && !isSymlink(link)) return@forEach
+            val stock = File(dir, "ldconfig.ubuntu")
+            if (!isSymlink(link) && !stock.exists() && !isHuskLdconfigWrapper(link)) {
+                link.renameTo(stock)
+            }
+            if (link.exists() || isSymlink(link)) link.delete()
+            runCatching {
+                link.writeText(wrapper)
+                link.setExecutable(true, false)
+            }
+        }
+    }
+
+    private fun isHuskLdconfigWrapper(file: File): Boolean =
+        runCatching { file.length() < 512 && file.readText().contains("husk-ldconfig") }.getOrDefault(false)
 
     /**
      * The loader resolves a symlink to its target before exec, so argv[0] becomes
