@@ -15,10 +15,9 @@ LinuxHub is built on and interoperates with open-source software from the Androi
 | [Termux](https://github.com/termux) | Terminal and Android integration foundations / 终端与 Android 集成基础 |
 | [Termux:X11](https://github.com/termux/termux-x11) | X11 display runtime foundations / X11 显示运行时基础 |
 | [Lorie](https://github.com/termux/termux-x11) | LinuxHub X11 presentation and input runtime / LinuxHub X11 显示与输入运行时 |
-| [PRoot](https://proot-me.github.io/) | User-space Linux execution and syscall compatibility / Linux 用户空间执行与系统调用兼容 |
 | [Mesa](https://www.mesa3d.org/) | OpenGL, Vulkan, Zink, llvmpipe, and VirGL integration / OpenGL、Vulkan、Zink、llvmpipe 与 VirGL 集成 |
 | [PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | Ubuntu audio services and the FIFO output bridge / Ubuntu 音频服务与 FIFO 输出桥 |
-| [Rust](https://www.rust-lang.org/) | Session controller and getifaddrs bridge / 会话控制与 getifaddrs 桥 |
+| [Rust](https://www.rust-lang.org/) | Session controller / 会话控制 |
 | [OpenSSL](https://www.openssl.org/) | HTTPS and certificate support / HTTPS 与证书支持 |
 | [Kotlin](https://kotlinlang.org/) | Android application development / Android 应用开发 |
 | [Jetpack Compose](https://developer.android.com/compose) | Android user interface / Android 用户界面 |
