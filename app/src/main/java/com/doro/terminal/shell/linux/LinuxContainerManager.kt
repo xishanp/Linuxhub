@@ -135,6 +135,13 @@ class LinuxContainerManager(private val context: Context) {
             }
             var selectedProfile = gpuProfile
             execute(InitializationStep.SAVE_CONFIGURATION, "正在保存 GPU 线路") {
+                // sudo arrived in CONFIGURE_SUDO, i.e. after the scan that ran when
+                // the package set was complete, so its RUNPATH directory
+                // (/usr/libexec/sudo) was missing from the declaration until the
+                // next app start refreshed it. Measured: `sudo` inside a shell said
+                // "libsudo_util.so.0: cannot open shared object file" right after
+                // INITIALIZATION COMPLETE, and worked after a restart (evidence 143).
+                ensureHuskLibraryPath()
                 if (gpuProfile != GpuProfile.SOFTWARE) installMesaGpuRuntime()
                 val mode = prepareGpuRuntime(gpuProfile, enabled = true)
                 selectedProfile = mode.toProfile()
