@@ -37,7 +37,8 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val USERMGR_ASSET = "husk/arm64-v8a/husk-usermgr"
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
         const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-7"
+        const val SU_ASSET = "husk/arm64-v8a/husk-su"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-8"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
@@ -108,12 +109,25 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
             // device's untrusted_app seccomp policy answers its startup syscalls
             // with SIGSYS. Measured: the 2.0 initialisation, run from the UI on a
             // freshly unpacked Ubuntu base, died with "Bad system call" in the
-            // very first guest command it issued (Husk evidence 136).
+            // very first guest command it issued (Husk evidence 137).
             val ldconfig = File(rootfsDir, "usr/sbin/husk-ldconfig")
             if (refresh || !ldconfig.isFile) {
                 copyAsset(LDCONFIG_ASSET, ldconfig)
                 ldconfig.setExecutable(true, false)
             }
+            // `su` must be ours as well. util-linux' su is dynamically linked,
+            // so it does reach the shim, but it cannot change identity here: its
+            // identity change runs `initgroups()` inside libc, whose setgroups()
+            // never passes the GOT (measured: "runuser: cannot set groups:
+            // Operation not permitted"), and its PAM stack answers
+            // "su: System error". LinuxHub calls `su - <user> -c ...` in three
+            // places while initialising, so this is on the init path.
+            val huskSu = File(sbin, "husk-su")
+            if (refresh || !huskSu.isFile) {
+                copyAsset(SU_ASSET, huskSu)
+                huskSu.setExecutable(true, false)
+            }
+            installSuWrappers()
             installLdconfigWrapper()
             installShadowTools()
             if (refresh) {
@@ -153,6 +167,37 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
             }
         }
     }
+
+    /**
+     * Point `su` and `runuser` at husk-su.
+     *
+     * Inside the container the identity is a fiction the shim maintains
+     * (`NR_FAKE_UID`/`NR_FAKE_GID`); husk-su picks the target account, sets
+     * those contract variables and execs the shell, which needs no privilege at
+     * all. The distro originals are kept as `su.util-linux` / `runuser.util-linux`
+     * so the diversion is visible and reversible.
+     */
+    private fun installSuWrappers() {
+        listOf("usr/bin/su", "sbin/su", "usr/sbin/runuser", "sbin/runuser")
+            .map { File(rootfsDir, it) }
+            .filter { it.exists() || isSymlink(it) }
+            // merged-/usr makes /bin and /usr/bin the same directory
+            .distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.path) }
+            .forEach { link ->
+                if (!isSymlink(link) && !isHuskSuWrapper(link)) {
+                    val stock = File(link.parentFile, link.name + ".util-linux")
+                    if (!stock.exists()) link.renameTo(stock)
+                }
+                if (link.exists() || isSymlink(link)) link.delete()
+                runCatching {
+                    link.writeText("#!/bin/sh\nexec /usr/sbin/husk-su \"\$@\"\n")
+                    link.setExecutable(true, false)
+                }
+            }
+    }
+
+    private fun isHuskSuWrapper(file: File): Boolean =
+        runCatching { file.length() < 512 && file.readText().contains("husk-su") }.getOrDefault(false)
 
     private fun isHuskLdconfigWrapper(file: File): Boolean =
         runCatching { file.length() < 512 && file.readText().contains("husk-ldconfig") }.getOrDefault(false)
