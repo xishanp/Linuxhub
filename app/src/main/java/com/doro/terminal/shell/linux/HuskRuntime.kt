@@ -38,7 +38,7 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
         const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
         const val SU_ASSET = "husk/arm64-v8a/husk-su"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-12"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-13"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
@@ -56,7 +56,12 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
     val sigsysLog = File(rootfsDir, "tmp/nr-sigsys.log")
 
     /** Guest-side directories a 2.0 session expects to exist. */
-    private val guestDirs = listOf("run", "run/doro-audio", "run/doro-desktop", "tmp", "tmp/.X11-unix")
+    // `/dev/shm` is POSIX shared memory: Android has no such directory, and the
+    // shim maps the name into the guest root on purpose (see path-shim's
+    // passthrough rules). proot used to bind the app's own tmp/shm there, so the
+    // directory has to exist now that the bind is gone - without it every
+    // shm_open() in the guest is ENOENT (evidence 146 §3).
+    private val guestDirs = listOf("run", "run/doro-audio", "run/doro-desktop", "tmp", "tmp/.X11-unix", "dev/shm")
 
     /** The two directories Ubuntus's own loader searches by default. */
     private val libraryDirs = listOf(
