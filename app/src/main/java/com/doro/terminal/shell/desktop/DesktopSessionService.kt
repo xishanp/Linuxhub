@@ -10,7 +10,7 @@ import androidx.core.content.ContextCompat
 /**
  * Foreground owner for the main app process.
  *
- * The PRoot/GNOME child processes are launched from this process. Keeping this
+ * The guest/GNOME child processes are launched from this process. Keeping this
  * process in the foreground prevents task removal from killing the session
  * owner while the user briefly leaves the desktop task.
  */

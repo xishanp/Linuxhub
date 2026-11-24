@@ -9,7 +9,7 @@ import java.security.MessageDigest
  * The Husk runtime: our own loader + path shim (see the Husk repository) used in
  * place of `libproot.so`.
  *
- * What changes when this replaces proot, in one place:
+ * How the guest contract differs from a proot container, in one place:
  *
  *  - `-r <rootfs>` becomes `NR_ROOTFS`; `PROOT_LOADER` becomes `NR_LD`. Both must
  *    be re-stated after every environment reset (`env -i`, `su`, `login`),
@@ -46,7 +46,7 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         private val shadowToolDirs = listOf("usr/sbin", "usr/bin")
     }
 
-    /** Extracted from the APK on first use; absence of the file means "use proot". */
+    /** Extracted from the APK on first use. Absent file = no usable runtime. */
     val loader = File(baseDir, "husk/libld.so")
 
     /** Patched glibc used by the guest; shipped beside the loader. */
@@ -333,6 +333,9 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
      * what a 2.0 desktop/session process runs as before it switches).
      */
     fun command(user: String?, command: List<String>): List<String> {
+        // There is no proot fallback any more: a missing loader is a broken
+        // install, and it must say so instead of failing inside exec().
+        check(loader.isFile) { "Husk 运行时缺失：${loader.path}，请重新初始化 Ubuntu" }
         val identity = user?.let { guestUser(it) }
         val home = identity?.get(2) ?: "/root"
         val shell = identity?.get(3) ?: "/bin/bash"
@@ -360,15 +363,4 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
             addAll(command)
         }
     }
-
-    /**
-     * proot's `-0` made everyone root, so switching user needed `su`. Here the
-     * identity is in the environment, so the wrapper collapses to the body.
-     */
-    fun asUser(user: String, body: String, quote: (String) -> String): String =
-        if (isPresent) body else "exec /usr/bin/su - ${quote(user)} -c ${quote(body)}"
-
-    /** proot's `su - <user>` for a login shell. */
-    fun loginShell(user: String, quote: (String) -> String): String =
-        if (isPresent) "exec /bin/bash -l" else "exec /usr/bin/su - ${quote(user)}"
 }

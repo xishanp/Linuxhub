@@ -556,7 +556,7 @@ private fun HomeEnvironmentCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                HomeTag("PRoot")
+                HomeTag("Husk")
                 Spacer(Modifier.size(6.dp))
                 HomeTag("GNOME")
             }

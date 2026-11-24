@@ -589,29 +589,11 @@ class LinuxContainerManager(private val context: Context) {
         // must never wait on startup maintenance or package locks.
         ensureDebPackageInstaller(config.username)
         installRuntime()
-        ensureGetifaddrsBridge()
-        // Under proot the group-name repair exists because `getgroups` leaks the
-        // Android gids. Husk reports only the guest's primary group (evidence 129),
-        // so this is a proot-only patch and is skipped.
-        val script = if (husk.isPresent) {
-            husk.loginShell(config.username) { shell(it) }
-        } else {
-            ensureAndroidGroupNamesScript() + "exec /usr/bin/su - ${shell(config.username)}"
-        }
+        // Husk reports only the guest's primary group (evidence 129), so the
+        // "cannot find name for group ID" repair proot needed is gone with it.
+        val script = "exec /bin/bash -l"
         return runtimeCommand(config.username, "/bin/sh", "-c", script)
     }
-
-    /**
-     * PRoot's fake-root extension intercepts getgroups(), so `id -G` does not expose the
-     * vendor-specific supplementary groups inherited from the Android app process. Read the
-     * kernel-maintained Groups line from /proc instead, then teach the Ubuntu group database
-     * those names before su starts a login shell. Without this, Qualcomm builds print a long
-     * "cannot find name for group ID" block when /etc/bash.bashrc probes for the sudo group.
-     */
-    private fun ensureAndroidGroupNamesScript(): String =
-        "for gid in \$(sed -n 's/^Groups:[[:space:]]*//p' /proc/self/status); do " +
-            "grep -q \"^[^:]*:[^:]*:\$gid:\" /etc/group || " +
-            "printf 'android_gid_%s:x:%s:\\n' \"\$gid\" \"\$gid\" >> /etc/group; done; "
 
     fun terminalLaunchSpec(config: ContainerConfig = requireNotNull(loadConfig())): TerminalLaunchSpec {
         val command = loginCommand(config)
@@ -625,25 +607,10 @@ class LinuxContainerManager(private val context: Context) {
         )
     }
 
-    fun loginEnvironment(): Map<String, String> {
-        // PRoot needs its loader and a scratch dir in the environment. Husk takes
-        // both as argv/env of the guest itself, and leaking the host library path
-        // into a glibc guest only breaks its own library search.
-        if (husk.isPresent) {
-            return husk.bootstrapEnvironment() + ("TERM" to "xterm-256color")
-        }
-        paths.prootTmpDir.mkdirs()
-        return mapOf(
-            "LD_LIBRARY_PATH" to paths.libraryDir.path,
-            "PROOT_LOADER" to paths.loader.path,
-            "PROOT_TMP_DIR" to paths.prootTmpDir.path,
-            "TMPDIR" to paths.prootTmpDir.path,
-            "TERM" to "xterm-256color"
-        )
-    }
+    fun loginEnvironment(): Map<String, String> =
+        husk.bootstrapEnvironment() + ("TERM" to "xterm-256color")
 
-    fun sessionWorkingDirectory(): String =
-        if (husk.isPresent) paths.rootfsDir.path else context.filesDir.path
+    fun sessionWorkingDirectory(): String = paths.rootfsDir.path
 
     private fun ensureNetworkConfig() {
         File(paths.rootfsDir, "etc/resolv.conf").writeText(
@@ -1296,7 +1263,6 @@ class LinuxContainerManager(private val context: Context) {
         // bridge is part of the global application environment, not a
         // per-app launcher workaround.
         installRuntime()
-        ensureGetifaddrsBridge()
         ensureNetworkConfig()
         ensureTrustedCertificates()
         ensureSudoInstalled(config.username)
@@ -1326,10 +1292,9 @@ class LinuxContainerManager(private val context: Context) {
             "export DORO_DESKTOP_TERMINAL=1; " +
             GnomeDesktopCompatibility.sessionScript(display, config.username, gpuCapability)
         val startSession = "printf 'stage=outer-root\\n' >>/tmp/doro-startup-stage.log 2>/dev/null || true; " +
-            (if (husk.isPresent) "" else ensureAndroidGroupNamesScript()) +
             GnomeDesktopCompatibility.systemServicesScript() + "; " +
             "printf 'stage=before-su\\n' >>/tmp/doro-startup-stage.log 2>/dev/null || true; " +
-            husk.asUser(config.username, script) { shell(it) }
+            script
         appendLog("DESKTOP_STAGE process-create")
         val process = sessionProcess(config.username, "/bin/sh", "-c", startSession)
             .apply { environment().putAll(loginEnvironment()) }
@@ -1354,12 +1319,10 @@ class LinuxContainerManager(private val context: Context) {
         // so the very first apt/dpkg operation already uses the shared path.
         ensureDebPackageInstaller(config.username)
         installRuntime()
-        ensureGetifaddrsBridge()
         ensureSudoInstalled(config.username)
         ensureStartupMaintenance(config.username)
         val userCommand = "cd \"\$HOME\" 2>/dev/null || true; exec /bin/sh -lc ${shell(command)}"
-        val loginScript = (if (husk.isPresent) "" else ensureAndroidGroupNamesScript()) +
-            husk.asUser(config.username, userCommand) { shell(it) }
+        val loginScript = userCommand
         val startedAt = System.nanoTime()
         val process = sessionProcess(config.username, "/bin/sh", "-c", loginScript)
             .apply { environment().putAll(loginEnvironment()) }
@@ -1481,54 +1444,6 @@ val reader = Thread {
         check(code == 0) { captured.ifBlank { "Ubuntu 配置失败：$operation，退出码 $code" } }
         return captured
     }
-private fun prepareContainerMounts() {
-        paths.x11SocketDir.mkdirs()
-        paths.sharedMemoryDir.mkdirs()
-        paths.audioDir.mkdirs()
-        paths.desktopScreenshotDir.mkdirs()
-        paths.sharedMemoryDir.setReadable(true, false)
-        paths.sharedMemoryDir.setWritable(true, false)
-        paths.sharedMemoryDir.setExecutable(true, false)
-        paths.desktopScreenshotDir.setReadable(true, false)
-        paths.desktopScreenshotDir.setWritable(true, false)
-        paths.desktopScreenshotDir.setExecutable(true, false)
-        paths.compatibilityProcDir.mkdirs()
-        val procStat = runCatching { File("/proc/stat").readText() }.getOrNull()
-        paths.compatibilityProcStat.writeText(
-            procStat?.takeIf(String::isNotBlank)
-                ?: "cpu  1 0 1 1 0 0 0 0 0 0\nbtime 0\n"
-        )
-        // Android exposes /proc/version as unreadable to the app sandbox.
-        // LibreOffice probes it during startup, so provide a small compatible
-        // file instead of letting the guest see EACCES.
-        val procVersion = runCatching { File("/proc/version").readText() }.getOrNull()
-        paths.compatibilityProcVersion.writeText(
-            procVersion?.takeIf(String::isNotBlank)
-                ?: "Linux version 6.1.0-android-linuxhub (linuxhub) #1 SMP PREEMPT\n"
-        )
-        // Android denies apps access to /proc/bus/pci/devices. Chromium treats
-        // that denial as a fatal GPU-process error before trying EGL/Vulkan.
-        // Adreno is not PCI-backed, so an accurate empty inventory is enough.
-        paths.compatibilityPciDevices.writeText("")
-        val battery = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-        val capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
-        val batteryDir = File(paths.compatibilityPowerSupplyDir, "BAT0").apply { mkdirs() }
-        File(batteryDir, "type").writeText("Battery\n")
-        File(batteryDir, "present").writeText("1\n")
-        File(batteryDir, "capacity").writeText("$capacity\n")
-        File(batteryDir, "status").writeText("Unknown\n")
-        File(paths.audioDir, "battery-capacity").writeText("$capacity\n")
-    }
-
-    private fun androidStorageBindings(): List<String> {
-        val primary = File("/storage/emulated/0")
-        return if (primary.isDirectory && primary.canRead()) {
-            listOf("-b", "${primary.path}:/sdcard", "-b", primary.path)
-        } else {
-            listOf("-b", "/sdcard")
-        }
-    }
-
     private fun sudoAccessScript(username: String): String =
         "getent group sudo >/dev/null || groupadd sudo; " +
             "usermod -aG sudo ${shell(username)}; " +
@@ -1546,48 +1461,20 @@ private fun prepareContainerMounts() {
             "case \"\$root_hash\" in ''|'*'|'!'*) [ -n \"\$user_hash\" ] && printf 'root:%s\\n' \"\$user_hash\" | chpasswd -e || exit 1;; esac; " +
             "test -x /usr/bin/sudo; test -r /etc/sudoers.d/${shell(username)}"
 
-    /**
-     * One entry point for every session: Husk when its loader is installed,
-     * proot otherwise. Both behind the same call, so the comparison stays honest
-     * - same rootfs, same command, two runtimes.
-     */
-    private fun runtimeCommand(user: String?, vararg command: String): List<String> =
-        if (husk.isPresent) {
-            husk.prepare()
-            husk.command(user, command.toList())
-        } else {
-            prootCommandLegacy(*command)
-        }
+    /** One entry point for every session: the Husk loader, nothing else. */
+    private fun runtimeCommand(user: String?, vararg command: String): List<String> {
+        husk.prepare()
+        return husk.command(user, command.toList())
+    }
 
     /** A process builder that starts in the directory the runtime needs. */
     private fun sessionProcess(user: String?, vararg command: String): ProcessBuilder {
         val builder = ProcessBuilder(runtimeCommand(user, *command))
         // The embedded shim reads these from the loader's own environment at
         // _dl_init. The same values are repeated after env -i for child execs.
-        if (husk.isPresent) {
-            builder.directory(paths.rootfsDir)
-            builder.environment().putAll(husk.bootstrapEnvironment())
-        }
+        builder.directory(paths.rootfsDir)
+        builder.environment().putAll(husk.bootstrapEnvironment())
         return builder
-    }
-
-    private fun prootCommandLegacy(vararg command: String): List<String> = buildList {
-        add(paths.proot.path)
-        prepareContainerMounts()
-        addAll(listOf("--link2symlink", "-0", "-r", paths.rootfsDir.path,
-            "-b", "/dev", "-b", "${paths.sharedMemoryDir.path}:/dev/shm",
-            "-b", "/proc", "-b", "${paths.compatibilityProcVersion.path}:/proc/version",
-            "-b", "${paths.compatibilityProcStat.path}:/proc/stat",
-            "-b", "${paths.compatibilityPciDevices.path}:/proc/bus/pci/devices",
-            "-b", "${paths.audioDir.path}:/run/doro-audio",
-            "-b", "${paths.desktopScreenshotDir.path}:/run/doro-desktop",
-            "-b", "/sys", "-b", "${paths.compatibilityPowerSupplyDir.path}:/sys/class/power_supply"))
-        addAll(androidStorageBindings())
-        addAll(listOf("-b", "${paths.x11SocketDir.path}:/tmp/.X11-unix",
-            "-w", "/root", "/usr/bin/env", "-i", "HOME=/root", "USER=root",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games",
-            "LANG=C.UTF-8", "TERM=xterm-256color", "COLORTERM=truecolor"))
-        addAll(command)
     }
 
     /**
@@ -1626,91 +1513,36 @@ private fun prepareContainerMounts() {
             .onFailure { appendLog("WARN husk runtime unavailable: ${it.message}") }
     }
 
+    /**
+     * Put the runtime where a session can execute it.
+     *
+     * Everything proot needed beside it - its loader, libtalloc/libandroid-shmem,
+     * the getifaddrs bridge server and the `LD_PRELOAD` line that installed the
+     * client - is gone: the shim synthesises `/proc`, `/dev`, mount points and
+     * the interface list itself (evidence 112/116/121), so none of it belongs in
+     * a Husk container.
+     */
     private fun installRuntime() {
         ensureHuskRuntime()
-        // Everything below exists for proot: its loader, its two shared
-        // libraries, the getifaddrs bridge and the LD_PRELOAD that installs it.
-        // None of that belongs in a Husk container (evidence 116/121).
-        if (husk.isPresent) return
-        val revision = installedProfileRevision()
-        val installedClient = File(paths.rootfsDir, GetifaddrsBridge.CONTAINER_LIBRARY.removePrefix("/"))
-        val profile = File(paths.rootfsDir, "etc/profile.d/doro.sh")
-        val preloadLine = "export LD_PRELOAD=${GetifaddrsBridge.CONTAINER_LIBRARY}"
-        val alreadyInstalled = runtimePreparedRevision == revision &&
-            paths.talloc.isFile && paths.androidShmem.isFile &&
-            File(paths.runtimeDir, "libgetifaddrs_bridge.so").isFile &&
-            installedClient.isFile && profile.isFile &&
-            profile.readLines().any { it.trim() == preloadLine }
-        if (alreadyInstalled) {
-            // The bridge is APK-owned and may change without changing the app
-            // version during a debug/test install. Refresh it rather than
-            // leaving an older C client in the rootfs.
-            synchronized(runtimeInstallLock) { installGetifaddrsClient() }
-            return
-        }
-
-        synchronized(runtimeInstallLock) {
-            val retryInstalled = runtimePreparedRevision == revision &&
-                paths.talloc.isFile && paths.androidShmem.isFile &&
-                File(paths.runtimeDir, "libgetifaddrs_bridge.so").isFile &&
-                installedClient.isFile && profile.isFile &&
-                profile.readLines().any { it.trim() == preloadLine }
-            if (retryInstalled) {
-                installGetifaddrsClient()
-                return
-            }
-
-            paths.prootTmpDir.mkdirs()
-            check(paths.prootTmpDir.isDirectory && paths.prootTmpDir.canWrite()) { "PRoot临时目录不可写" }
-            check(paths.proot.isFile && paths.proot.canExecute()) { "PRoot 原生运行时不可用" }
-            check(paths.loader.isFile) { "PRoot Loader 不可用" }
-            paths.libraryDir.mkdirs()
-            copyAsset("runtime/arm64-v8a/lib/libtalloc.so.2", paths.talloc)
-            copyAsset("runtime/arm64-v8a/lib/libandroid-shmem.so", paths.androidShmem)
-            installGetifaddrsClient()
-            profile.parentFile?.mkdirs()
-            if (!profile.exists()) profile.writeText("$preloadLine\n")
-            else if (profile.readLines().none { it.trim() == preloadLine }) profile.appendText("$preloadLine\n")
-            check(paths.getifaddrsServer.isFile && paths.getifaddrsServer.canExecute()) { "getifaddrs服务端不可用" }
-            runtimePreparedRevision = revision
-        }
+        writeGuestRuntimeFiles()
     }
 
-    private fun installGetifaddrsClient() {
-        val stagedClient = File(paths.runtimeDir, "libgetifaddrs_bridge.so")
-        copyAsset(paths.getifaddrsClientAsset, stagedClient)
-        GetifaddrsBridge.installClient(paths.rootfsDir, stagedClient)
-    }
-
-    private fun ensureGetifaddrsBridge() {
-        // proot-only: Husk enumerates interfaces through its own netlink interpose.
-        if (husk.isPresent) return
-        synchronized(bridgeLock) {
-            if (bridgeProcess?.let { runCatching { it.exitValue() }.isFailure } == true && paths.getifaddrsSocket.exists()) return
-            bridgeProcess?.destroy()
-            paths.getifaddrsSocket.parentFile?.mkdirs()
-            paths.getifaddrsSocket.delete()
-            // The lock is held by the server process, not by the socket.
-            // Remove a stale lock left by a server orphaned before the
-            // current app process took ownership.
-            paths.getifaddrsSocket.parentFile?.let { parent ->
-                File(parent, "${paths.getifaddrsSocket.name}.lock").delete()
-            }
-            val bridgeLog = File(paths.baseDir, "logs/getifaddrs.log").also { it.parentFile?.mkdirs() }
-            bridgeProcess = ProcessBuilder(
-                "/system/bin/sh", "-c",
-                "exec ${shell(paths.getifaddrsServer.path)} ${shell(paths.getifaddrsSocket.path)} >> ${shell(bridgeLog.path)} 2>&1"
-            ).start()
-            repeat(40) {
-                val process = bridgeProcess
-                if (process != null && runCatching { process.exitValue() }.isSuccess) {
-                    error("getifaddrs桥启动失败，服务端提前退出")
-                }
-                if (paths.getifaddrsSocket.exists()) return
-                Thread.sleep(25)
-            }
-            error("getifaddrs桥启动失败")
-        }
+    /**
+     * Files the guest reads out of `/run` that only the host can produce.
+     *
+     * Under proot these arrived through `-b`, so they lived in the app's private
+     * directory. Husk makes `/run/doro-audio` real *inside* the rootfs, so the
+     * battery reading has to be written there instead (the guest applet reads
+     * `/run/doro-audio/battery-capacity`).
+     */
+    private fun writeGuestRuntimeFiles() {
+        if (!paths.rootfsDir.isDirectory) return
+        val battery = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
+        runCatching {
+            paths.audioDir.mkdirs()
+            File(paths.audioDir, "battery-capacity").writeText("$capacity\n")
+        }.onFailure { appendLog("WARN battery status: ${it.message}") }
     }
 
     private fun copyAsset(asset: String, target: File) {
@@ -2318,11 +2150,9 @@ private fun prepareContainerMounts() {
     }
 
     private fun environmentScript(username: String): String =
-        // The LD_PRELOAD bridge exists because proot's getifaddrs() cannot see the
-        // host interfaces. Husk interposes AF_NETLINK itself (evidence 116/121), so
-        // the preload is a proot-only patch and is not written under Husk.
+        // No LD_PRELOAD line: Husk interposes AF_NETLINK itself (evidence 116/121),
+        // so the getifaddrs bridge proot needed is gone (see installRuntime).
         "printf '%s\\n' 'export LANG=zh_CN.UTF-8' 'export LC_ALL=zh_CN.UTF-8' 'export LANGUAGE=zh_CN:zh' 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games'" +
-            (if (husk.isPresent) "" else " 'export LD_PRELOAD=${GetifaddrsBridge.CONTAINER_LIBRARY}'") +
             " > /etc/profile.d/doro.sh && " +
             "ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && " +
             "printf '%s\\n' 'Asia/Shanghai' > /etc/timezone && " +
@@ -2396,7 +2226,6 @@ private fun prepareContainerMounts() {
     private fun shell(value: String) = "'${value.replace("'", "'\\''")}'"
 
     companion object {
-        private val bridgeLock = Any()
         private val runtimeInstallLock = Any()
         private val startupMaintenanceLock = Any()
         private val commonRuntimeLock = Any()
@@ -2405,8 +2234,6 @@ private fun prepareContainerMounts() {
         private val trustedCertificatesLock = Any()
         private val desktopProfileLock = Any()
         private val vendorRuntimeRepairLock = Any()
-        @Volatile private var bridgeProcess: Process? = null
-        @Volatile private var runtimePreparedRevision: String? = null
         @Volatile private var startupMaintenanceRevision: String? = null
         private const val ROOTFS_ASSET = "rootfs/ubuntu-base-24.04.4-base-arm64.tar"
         private const val XKB_ASSET = "x11/xkb-data.tar"
