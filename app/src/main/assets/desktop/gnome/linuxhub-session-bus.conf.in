@@ -4,14 +4,17 @@
   <!--
     Private LinuxHub GNOME session bus.
 
-    PRoot presents a synthetic uid to D-Bus, while Android supplies the app uid
-    as the Unix peer credential. EXTERNAL authentication therefore rejects
-    independent PRoot launches. ANONYMOUS is limited to this private bus. An
-    abstract socket is used so the bus lifetime follows the daemon instead of a
-    pathname that desktop cleanup services can unlink.
+    EXTERNAL first: the Husk loader answers getsockopt(SO_PEERCRED) with the
+    identity the peer reports (NR_FAKE_UID/GID), so socket-credential
+    authentication names every client - which is what lets polkitd, gvfs and
+    the accessibility bus tell users apart. ANONYMOUS stays as the fallback so
+    a client whose identity cannot be resolved still connects. An abstract
+    socket is used so the bus lifetime follows the daemon instead of a pathname
+    that desktop cleanup services can unlink.
   -->
   <type>session</type>
   <listen>unix:abstract=@SESSION_BUS_ABSTRACT@</listen>
+  <auth>EXTERNAL</auth>
   <auth>ANONYMOUS</auth>
   <allow_anonymous/>
 
