@@ -24,7 +24,14 @@ internal object X11Environment {
     )
 
     fun prepare(context: Context): Prepared {
-        val tmpDir = File(context.filesDir, "linux/tmp").apply { mkdirs() }
+        // The X socket has to be where the *guest* looks for it. The server is an
+        // Android process and the guest reaches /tmp through our own path shim,
+        // so one of the two has to move: the rootfs' tmp is the path both sides
+        // can name (`/tmp/.X11-unix/X0`), and HuskRuntime creates it before any
+        // session starts. Keeping the socket in the app's private tmp instead
+        // left every guest client with "Unable to open display ':0'" while Lorie
+        // sat happily on 0.0 FPS (evidence 147 §4).
+        val tmpDir = guestTmpDir(context).apply { mkdirs() }
         val socketDir = File(tmpDir, ".X11-unix").apply { mkdirs() }
         check(socketDir.isDirectory && socketDir.canRead() && socketDir.canWrite()) {
             "X11 socket目录不可用：${socketDir.path}"
@@ -45,6 +52,9 @@ internal object X11Environment {
         )
         return Prepared(tmpDir, xkbDir, nativeLibraryDir)
     }
+
+    private fun guestTmpDir(context: Context): File =
+        File(File(context.filesDir, "linux/distributions/ubuntu-24.04/rootfs"), "tmp")
 
     private fun ensureXkb(context: Context, xkbDir: File) {
         val missing = REQUIRED_XKB_FILES.filterNot { File(xkbDir, it).isFile }

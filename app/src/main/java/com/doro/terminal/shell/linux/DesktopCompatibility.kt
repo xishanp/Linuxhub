@@ -3,22 +3,6 @@ package com.doro.terminal.shell.linux
 internal object DesktopCompatibility {
     const val DEFAULT_WALLPAPER = "/usr/share/backgrounds/xfce/doro-ubuntu.png"
 
-    fun systemServicesScript(): String =
-        "mkdir -p /run/dbus; " +
-            "if ! dbus-send --system --dest=org.freedesktop.DBus --type=method_call --print-reply " +
-            "/ org.freedesktop.DBus.ListNames >/dev/null 2>&1; then " +
-            "pkill -9 -x dbus-daemon 2>/dev/null || true; " +
-            "rm -f /run/dbus/system_bus_socket; " +
-            "dbus-daemon --system --fork --nopidfile >/tmp/doro-system-dbus.log 2>&1 || exit 1; " +
-            "fi; " +
-            "doro_bus_try=0; while [ ! -S /run/dbus/system_bus_socket ] && [ \"\$doro_bus_try\" -lt 20 ]; do " +
-            "doro_bus_try=\$((doro_bus_try+1)); sleep 0.1; done; " +
-            "pkill -9 -x polkitd 2>/dev/null || true; " +
-            "/usr/lib/polkit-1/polkitd --no-debug >/tmp/doro-polkitd.log 2>&1 & " +
-            "doro_polkit_try=0; while ! pgrep -x polkitd >/dev/null 2>&1 && [ \"\$doro_polkit_try\" -lt 30 ]; do " +
-            "doro_polkit_try=\$((doro_polkit_try+1)); sleep 0.1; done; " +
-            "pgrep -x polkitd >/dev/null 2>&1 || { cat /tmp/doro-polkitd.log; exit 1; }"
-
     fun sessionScript(display: String, username: String, gpuMode: GpuRenderMode): String {
         return "export DISPLAY=${quote(display)}; " +
             "if locale -a 2>/dev/null | grep -qi '^zh_CN\\.utf8$'; then " +

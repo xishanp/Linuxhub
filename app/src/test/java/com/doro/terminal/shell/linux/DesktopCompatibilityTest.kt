@@ -6,11 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DesktopCompatibilityTest {
-    @Test fun sessionScriptStartsSystemAndSessionDbus() {
+    @Test fun sessionScriptStartsSessionDbus() {
         val script = DesktopCompatibility.sessionScript(":0", "doro", GpuRenderMode.KGSL)
-        assertTrue(DesktopCompatibility.systemServicesScript().contains("dbus-daemon --system"))
-        assertTrue(DesktopCompatibility.systemServicesScript().contains("/usr/lib/polkit-1/polkitd"))
-        assertTrue(DesktopCompatibility.systemServicesScript().contains("pgrep -x polkitd"))
         assertTrue(script.contains("dbus-launch --exit-with-session"))
         assertFalse(script.contains("lotus/launch.fifo"))
         assertFalse(script.contains("gio launch"))
