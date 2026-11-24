@@ -38,7 +38,7 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         const val LIBC_ASSET = "husk/arm64-v8a/libc.so.6"
         const val LDCONFIG_ASSET = "husk/arm64-v8a/husk-ldconfig"
         const val SU_ASSET = "husk/arm64-v8a/husk-su"
-        private const val ASSET_REVISION = "husk-runtime-spawn-link-8"
+        private const val ASSET_REVISION = "husk-runtime-spawn-link-9"
         private const val LIBC_BASE_SHA256 = "fe5966a43e068ad7cb389c3affa069f4ee6f296e07d7ccc0398a23cfde4f0b7e"
         private const val LIBC_PATCHED_SHA256 = "32d4d3f9501a2c717cf2246a2df1a898f1361b49e0576614461d70fc94774b56"
         private val shadowTools =
@@ -58,14 +58,32 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
     /** Guest-side directories a 2.0 session expects to exist. */
     private val guestDirs = listOf("run", "run/doro-audio", "run/doro-desktop", "tmp", "tmp/.X11-unix")
 
+    /** The two directories Ubuntus's own loader searches by default. */
     private val libraryDirs = listOf(
         "lib/aarch64-linux-gnu",
         "usr/lib/aarch64-linux-gnu",
+    )
+
+    /**
+     * Private library directories, used only when the guest has not told us its
+     * own list yet.
+     *
+     * These four were added one at a time while chasing GNOME failures under
+     * proot; they are exactly what `DT_RUNPATH` is supposed to provide, except
+     * that glibc resolves RUNPATH inside the loader where nothing can interpose
+     * (Husk evidence 139 §3.1). `husk-ldconfig --library-path-file` now reads
+     * every RUNPATH the guest declares and writes it to [huskLibraryPathFile];
+     * this list stays as a fallback for a rootfs where that has not run yet.
+     */
+    private val fallbackPrivateLibraryDirs = listOf(
         "usr/lib/aarch64-linux-gnu/systemd",
         "usr/lib/aarch64-linux-gnu/mutter-14",
         "usr/lib/gnome-shell",
         "usr/lib/aarch64-linux-gnu/gvfs",
     )
+
+    /** Written by `husk-ldconfig --library-path-file`: guest-absolute dirs, one per line. */
+    val huskLibraryPathFile = File(rootfsDir, "etc/ld.so.husk-path")
 
     val isPresent: Boolean
         get() = loader.isFile && loader.canExecute() && rootfsDir.isDirectory
@@ -253,12 +271,27 @@ class HuskRuntime(private val rootfsDir: File, private val baseDir: File) {
         guestDirs.forEach { File(rootfsDir, it).mkdirs() }
     }
 
-    private fun libraryPath(): String = libraryDirs
+    private fun libraryPath(): String {
         // Keep every known guest library directory in the search path. Missing
         // entries are harmless to the loader; filtering through File.isDirectory
         // here has already hidden a late-unpacked systemd private directory from
         // resumed package configuration.
-        .joinToString(":") { "${rootfsDir.path}/$it" }
+        val declared = declaredLibraryDirs()
+        val known = libraryDirs.map { "${rootfsDir.path}/$it" } +
+            fallbackPrivateLibraryDirs.map { "${rootfsDir.path}/$it" }
+        // Declared entries are guest-absolute, so they only need the rootfs prefix.
+        val fromGuest = declared.map { rootfsDir.path + it }
+        return (known + fromGuest).distinct().joinToString(":")
+    }
+
+    /** The guest's own RUNPATH directories, as recorded by husk-ldconfig. */
+    private fun declaredLibraryDirs(): List<String> = runCatching {
+        if (!huskLibraryPathFile.isFile) return@runCatching emptyList()
+        huskLibraryPathFile.readLines()
+            .map { it.trim() }
+            .filter { it.startsWith("/") && it.length > 1 }
+            .map { it.trimEnd('/') }
+    }.getOrDefault(emptyList())
 
     /**
      * Environment the loader and its nested execs need. These values must also

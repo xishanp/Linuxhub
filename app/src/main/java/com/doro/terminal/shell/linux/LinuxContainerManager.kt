@@ -70,7 +70,10 @@ class LinuxContainerManager(private val context: Context) {
         // assets live inside EXTRACT_SYSTEM, so an APK update that resumes at
         // CREATE_CONTAINER would otherwise keep the old loader/libc/usermgr
         // until a full reset. Deploy them before the resume gate every time.
-        if (paths.rootfsDir.isDirectory) ensureHuskRuntime()
+        if (paths.rootfsDir.isDirectory) {
+            ensureHuskRuntime()
+            ensureHuskLibraryPath()
+        }
 
         try {
             fun execute(step: InitializationStep, message: String, action: () -> Unit) {
@@ -111,6 +114,9 @@ class LinuxContainerManager(private val context: Context) {
                 // Every user-facing application is a final offline overlay. It
                 // is unpacked only after the hardware/system layer is ready.
                 installVendorApps(onProgress)
+                // The package set is complete here; let the guest declare its own
+                // library directories before anything is started with the loader.
+                ensureHuskLibraryPath()
             }
             execute(InitializationStep.CREATE_USER, "正在创建登录账户") {
                 runAsRoot(userCreationScript(username, password), "create-user")
@@ -159,11 +165,15 @@ class LinuxContainerManager(private val context: Context) {
     fun prepareContainerRuntime() {
         val config = loadConfig() ?: return
         if (!config.initialized) return
+        // Refresh the APK-owned runtime assets first: everything below assumes
+        // the guest tools are the ones this build shipped.
+        ensureHuskRuntime()
         // APK-owned installer assets are plain file copies and must not depend
         // on slower package maintenance succeeding first.
         ensureDebPackageInstaller(config.username)
         ensureStartupMaintenance(config.username)
         ensureSudoInstalled(config.username)
+        ensureHuskLibraryPath()
     }
 
     private fun ensureSudoInstalled(username: String) {
@@ -1283,6 +1293,7 @@ class LinuxContainerManager(private val context: Context) {
         ensureNetworkConfig()
         ensureTrustedCertificates()
         ensureSudoInstalled(config.username)
+        ensureHuskLibraryPath()
         removeLegacyGpuWrappers()
         val gpuCapability = prepareGpuRuntime(config.gpuProfile, gpuAcceleration)
         appendLog("GPU_CAPABILITY ${gpuCapability.id}")
@@ -1570,6 +1581,35 @@ private fun prepareContainerMounts() {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games",
             "LANG=C.UTF-8", "TERM=xterm-256color", "COLORTERM=truecolor"))
         addAll(command)
+    }
+
+    /**
+     * Ask the guest for the library directories its own binaries declare.
+     *
+     * glibc resolves `DT_RUNPATH` inside the loader, where no GOT interposition
+     * exists, so a private directory such as `/usr/libexec/sudo` is searched in
+     * the host namespace and missed - `sudo` could not find `libsudo_util.so.0`
+     * and gio's proxy module could not find `libpxbackend-1.0.so`, both of which
+     * are present in the rootfs (Husk evidence 139 §3.1). `husk-ldconfig
+     * --library-path-file` walks the guest, collects every absolute RUNPATH and
+     * writes it to `/etc/ld.so.husk-path`; [HuskRuntime.libraryPath] then feeds
+     * them to the loader as a search path.
+     *
+     * Cheap enough to redo whenever the package set may have changed (a few
+     * seconds), and doing nothing is safe: the fallback list keeps the desktop's
+     * known private directories in place.
+     */
+    private fun ensureHuskLibraryPath() {
+        if (!husk.isPresent) return
+        if (!File(paths.rootfsDir, "usr/sbin/husk-ldconfig").isFile) return
+        runCatching {
+            runAsRoot(
+                "test -x /usr/sbin/husk-ldconfig && /usr/sbin/husk-ldconfig --library-path-file /etc/ld.so.husk-path",
+                "husk-library-path",
+                timeoutMs = 180_000L,
+                idleTimeoutMs = 60_000L,
+            )
+        }.onFailure { appendLog("WARN husk library path: ${it.message}") }
     }
 
     /** Extract the Husk loader + guest account tools from the APK (idempotent). */
