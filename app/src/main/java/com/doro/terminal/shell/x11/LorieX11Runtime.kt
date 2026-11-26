@@ -641,7 +641,7 @@ class LorieX11Runtime(
         state = X11State.ATTACHING
         try {
             Log.i(TAG, "Attaching Surface ${width}x$height density=$densityDpi")
-            requireNotNull(view) { "X11 SurfaceView尚未绑定" }.attachRuntimeSurface(surface, width, height)
+            requireNotNull(view) { "X11 SurfaceView尚未绑定" }.attachVisibleSurface(surface, width, height)
             attachedSurface = surface
             attachedWidth = width
             attachedHeight = height

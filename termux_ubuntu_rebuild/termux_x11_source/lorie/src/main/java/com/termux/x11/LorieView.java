@@ -705,8 +705,18 @@ public class LorieView extends SurfaceView implements InputStub {
         lastCommittedWindowHeight = -1;
     }
 
-    public void attachRuntimeSurface(Surface surface, int width, int height) {
-        attachRuntimeSurface(surface, width, height, width, height);
+    /**
+     * Attaches the normal visible Surface without pretending its dimensions are
+     * already the committed X11 root size. The settled viewport pass must still
+     * send a RandR resize when the headless root and the visible Surface differ.
+     */
+    public void attachVisibleSurface(Surface surface, int width, int height) {
+        externalRuntimeSurface = false;
+        surfaceReady = true;
+        runtimeSurfaceWidth = Math.max(0, width);
+        runtimeSurfaceHeight = Math.max(0, height);
+        attachSurfaceToRenderer(surface, width, height);
+        requestRedraw("attachVisibleSurface");
     }
 
     /**

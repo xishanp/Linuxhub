@@ -107,7 +107,11 @@ internal fun RemoteDesktopPage(mode: RemoteDesktopMode, onBack: () -> Unit) {
         val failure = withContext(Dispatchers.IO) {
             runCatching {
                 if (!LinuxHubDesktopSession.status(context).running) {
-                    LinuxHubDesktopSession.start(context, requestedWidth = 1920, requestedHeight = 1080)
+                    // Keep the desktop at the device's native panel size. A
+                    // lower remote-stream profile must scale this session, not
+                    // restart GNOME at a smaller root and later resize it under
+                    // a live Mutter session (which leaves the desktop clipped).
+                    LinuxHubDesktopSession.start(context)
                 }
                 server.start()
             }.exceptionOrNull()

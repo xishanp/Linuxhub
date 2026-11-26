@@ -516,14 +516,26 @@ static Bool lorieRedraw(__unused ClientPtr pClient, __unused void *closure) {
 
     pvfb->state->waitForNextFrame = false;
 
-    if (!lorieConnectionAlive(conn_fd) || !pvfb->state->surfaceAvailable)
-        return TRUE;
-
     nonEmpty = RegionNotEmpty(DamageRegion(pvfb->damage));
     priv = root ? exaGetPixmapDriverPrivate(root) : NULL;
 
     if (!priv)
         // Impossible situation, but let's skip this step
+        return TRUE;
+
+    // Headless clients have no Android Surface yet, but frame capture still needs
+    // the root AHardwareBuffer id. Publish it before the surface gate so the
+    // renderer can resolve captureFrameSize()/captureFrame() while GNOME paints.
+    if (priv->buffer) {
+        uint64_t rootId = LorieBuffer_description(priv->buffer)->id;
+        if (pvfb->state->rootWindowTextureID != rootId) {
+            pvfb->state->rootWindowTextureID = rootId;
+            log(DEBUG, "Published headless X11 root buffer id %llu",
+                (unsigned long long) rootId);
+        }
+    }
+
+    if (!lorieConnectionAlive(conn_fd) || !pvfb->state->surfaceAvailable)
         return TRUE;
 
     if (nonEmpty && priv->buffer) {
